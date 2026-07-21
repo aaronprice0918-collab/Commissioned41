@@ -14,3 +14,13 @@ updates:
         update-types:
           - "minor"
           - "patch"
+    ignore:
+      # Major bumps are breaking migrations (e.g. Tailwind 3→4, TypeScript 5→7,
+      # ESLint 9→10) — do them deliberately as their own reviewed change, never
+      # via an unattended bot PR that would fail the build.
+      - dependency-name: "*"
+        update-types: ["version-update:semver-major"]
+      # stripe is intentionally pinned: dealer-os's client apiVersion
+      # (lib/stripe.ts) must match the SDK's types, and a drift already broke
+      # production once. Bump stripe BY HAND together with the apiVersion string.
+      - dependency-name: "stripe"
