@@ -330,7 +330,7 @@ export async function executeIlaTool(call: IlaToolCall, ctx: HandsCtx): Promise<
             friendly: "No bank linked",
           };
         }
-        ctx.updateMoney(applyBankSync(cfg, j.sync, new Date().toISOString()));
+        ctx.updateMoney(applyBankSync(cfg, j.sync, new Date().toISOString(), ctx.profile?.name));
         const chk = j.sync.checking != null ? `checking $${Math.round(j.sync.checking).toLocaleString()}` : "checking unchanged";
         const sav = j.sync.savings != null ? `, savings $${Math.round(j.sync.savings).toLocaleString()}` : "";
         return {

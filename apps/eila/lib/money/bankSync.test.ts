@@ -189,4 +189,40 @@ describe("applyBankSync — everyday spend from the feed", () => {
     expect(bankSpend(twice)).toHaveLength(2);
     expect(budgetMonth(twice, NOW)?.totalSpent).toBe(266); // 40 + 6 + 220
   });
+
+  it("excludes debt, card payments, transfers, self-Zelle, subs, utilities — keeps real spend", () => {
+    const next = applyBankSync(
+      defaultMoneyConfig(),
+      {
+        ...SYNC,
+        transactions: [
+          // NOT everyday — must be excluded:
+          { date: "2026-07-13", name: "Ford Credit", amount: -860.65 }, // auto loan
+          { date: "2026-07-02", name: "Five Lakes", amount: -175.09 }, // debt consolidation
+          { date: "2026-07-13", name: "Mobile Banking payment to CRD 7738 Confirmation# jifgrwaau", amount: -107 }, // card payoff
+          { date: "2026-07-03", name: "Online Scheduled Payment to ACCT# 7334 Confirmation# XXXXX35070", amount: -470.15 }, // internal
+          { date: "2026-07-13", name: "Zelle payment to AARON PRICE Conf# xbam0m8a7", amount: -420 }, // to self
+          { date: "2026-07-01", name: "Georgia Natural", amount: -70.36 }, // gas utility
+          { date: "2026-07-01", name: "Flexible Finance", amount: -1503.61 }, // rent/lease
+          { date: "2026-07-03", name: "Anthropic", amount: -45 }, // subscription
+          // Real everyday spend — must be kept:
+          { date: "2026-07-02", name: "Zelle payment to Marina Fitzjerald Conf# yvwcxi5gr", amount: -15 }, // person-to-person
+          { date: "2026-07-16", name: "Venmo", amount: -500 },
+          { date: "2026-07-06", name: "Kroger", amount: -83.16 },
+          { date: "2026-07-10", name: "Murphy USA", amount: -35 },
+          { date: "2026-07-10", name: "Outback Steakhouse", amount: -45.59 },
+        ],
+      },
+      "2026-07-13T04:00:00Z",
+      "Aaron Price",
+    );
+    const spend = bankSpend(next);
+    // Only the 5 real everyday buys survive.
+    expect(spend).toHaveLength(5);
+    expect(spend.some((e) => /ford|five lakes|crd|scheduled payment|aaron price|georgia natural|flexible|anthropic/i.test(e.note ?? ""))).toBe(false);
+    expect(budgetMonth(next, NOW)?.totalSpent).toBe(679); // 15 + 500 + 83 + 35 + 46
+    expect(spend.find((e) => e.note?.includes("Kroger"))?.category).toBe("Groceries");
+    expect(spend.find((e) => e.note?.includes("Murphy"))?.category).toBe("Gas");
+    expect(spend.find((e) => e.note?.includes("Outback"))?.category).toBe("Dining");
+  });
 });

@@ -235,7 +235,7 @@ function budgetLine(cfg: NonNullable<Profile["money"]>, now: Date): string {
     bm.leftToSpend >= 0
       ? `LEFT TO SPEND ${money(bm.leftToSpend)} of the ${money(bm.totalBudget)} budget, ${bm.daysLeft} days left in the month (~${money(bm.perDayLeft)}/day to stay on plan).`
       : `OVER BUDGET by ${money(Math.abs(bm.leftToSpend))} with ${bm.daysLeft} days still to go — coach the correction, no shame.`;
-  return `BUDGET THIS MONTH (planned vs their ACTUAL logged spending — only what they've logged; it doesn't change safe-to-spend): ${head} By category: ${cats}. When they mention buying something in passing, log_spend it so this scorecard stays true.`;
+  return `BUDGET THIS MONTH (planned vs ACTUAL spending — auto-filled from synced bank transactions PLUS anything logged by hand; it doesn't change safe-to-spend): ${head} By category: ${cats}. The bank feed already covers everyday purchases, so don't nag them to log what's synced — only log_spend a cash buy or fix a mis-categorized line. Deliver the number straight but kind: name what's real, coach the next move, never shame.`;
 }
 
 // The Daily Budget ("Daily spending allowance") — the number the rep can spend TODAY
