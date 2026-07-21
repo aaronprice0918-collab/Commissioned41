@@ -6,6 +6,7 @@ import { appendMessagePatch, inboundConsentEvent, matchLeadByPhone, samePhone, t
 import { twilioCredsPresent, verifyTwilioSignature } from "@/lib/twilio";
 import { scoreSentiment } from "@/lib/textIntelligence";
 import { pauseCadence } from "@/lib/followUpCadence";
+import { rateLimit } from "@/lib/rateLimit";
 
 // Inbound texts from Twilio. Two jobs, both compliance-load-bearing:
 // 1. Land the customer's reply on their lead's thread so the store SEES it
@@ -51,6 +52,11 @@ export async function POST(request: NextRequest) {
   const from = params.From || "";
   const body = (params.Body || "").trim();
   if (!from || !body) return twiml();
+
+  // Rate limit per sender phone — a legitimate customer won't send 60 texts/min.
+  // Prevents replay floods even with valid signatures.
+  const rl = await rateLimit(`sms-in:${from.slice(-7)}`, { limit: 60, windowSec: 60 });
+  if (!rl.ok) return twiml();
 
   const supabase = getSupabaseServerClient();
   if (!supabase) return twiml();
