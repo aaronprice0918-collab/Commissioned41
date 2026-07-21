@@ -24,6 +24,7 @@ import {
   incomeExpectation,
   payYourselfBill,
   removeSpend,
+  setMerchantRule,
 } from "@/lib/money/engine";
 import type { CashFlowPoint, MoneyConfig } from "@/lib/money/types";
 import { defaultMoneyConfig } from "@/lib/money/types";
@@ -190,6 +191,7 @@ export function DailyBudget() {
         onClose={() => setHistoryOpen(false)}
         cfg={cfg}
         onRemove={(id) => updateMoney(removeSpend(cfg, id))}
+        onReclassify={(merchant, kind, category) => updateMoney(setMerchantRule(cfg, merchant, kind, category, todayIso()))}
       />
       <LogSpendSheet
         open={logOpen}

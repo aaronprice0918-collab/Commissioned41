@@ -11,6 +11,7 @@ import type {
   DailyBudgetInfo,
   LedgerRow,
   MoneyConfig,
+  MerchantRule,
   MonthBill,
   MonthCheck,
   MoneyGoal,
@@ -828,7 +829,19 @@ const EVERYDAY_CATEGORIES: { category: string; words: string[] }[] = [
   { category: "Travel", words: ["uber trip", "lyft", "delta", "airbnb", "hotel", "airlines", "marriott", "hilton"] },
 ];
 
-function everydayCategoryFor(name: string): string {
+// Find the learned rule for a merchant, if the member taught the app one.
+function matchMerchantRule(name: string, rules?: MerchantRule[]): MerchantRule | undefined {
+  if (!rules?.length) return undefined;
+  const key = bankBillCompact(bankBillKey(name));
+  return rules.find((r) => {
+    const rk = bankBillCompact(r.key);
+    return rk.length >= 3 && (key === rk || key.includes(rk) || rk.includes(key));
+  });
+}
+
+function everydayCategoryFor(name: string, rules?: MerchantRule[]): string {
+  const rule = matchMerchantRule(name, rules);
+  if (rule?.kind === "everyday" && rule.category) return rule.category;
   for (const { category, words } of EVERYDAY_CATEGORIES) {
     if (hasBankWord(name, words)) return category;
   }
@@ -850,7 +863,10 @@ function isSelfTransfer(name: string, holderName?: string): boolean {
 // payment, subscription, internal transfer, credit-card payoff, a self-transfer,
 // or a known named bill. This is the money that was silently vanishing: counted
 // against the balance but never against "money out".
-function isEverydaySpend(name: string, knownBills: Bill[], holderName?: string): boolean {
+function isEverydaySpend(name: string, knownBills: Bill[], holderName?: string, rules?: MerchantRule[]): boolean {
+  // A learned rule ALWAYS wins — it's the member's explicit correction.
+  const rule = matchMerchantRule(name, rules);
+  if (rule) return rule.kind === "everyday";
   if (hasBankWord(name, DEBT_WORDS)) return false;
   if (hasBankWord(name, HOUSEHOLD_BILL_WORDS)) return false;
   if (hasBankWord(name, SUBSCRIPTION_WORDS)) return false;
@@ -869,6 +885,7 @@ function everydaySpendFromBank(
   knownBills: Bill[],
   nowISO: string,
   holderName?: string,
+  rules?: MerchantRule[],
 ): SpendEntry[] {
   const cutoff = iso(new Date(fromIso(nowISO.slice(0, 10)).getTime() - 92 * DAY));
   const out: SpendEntry[] = [];
@@ -878,12 +895,12 @@ function everydaySpendFromBank(
     const amount = Math.round(Math.abs(tx.amount));
     if (amount < 1) continue;
     if (!/^\d{4}-\d{2}-\d{2}$/.test(tx.date) || tx.date < cutoff) continue;
-    if (!isEverydaySpend(tx.name, knownBills, holderName)) continue;
+    if (!isEverydaySpend(tx.name, knownBills, holderName, rules)) continue;
     out.push({
       id: `bank-tx-${seq++}-${bankBillCompact(tx.name).slice(0, 32)}`,
       date: tx.date,
       amount,
-      category: everydayCategoryFor(tx.name),
+      category: everydayCategoryFor(tx.name, rules),
       note: bankBillDisplayName(tx.name),
       source: "bank",
     });
@@ -1036,6 +1053,7 @@ function addMissingBankBills(existing: Bill[], detected: Bill[]): Bill[] {
  */
 export function applyBankSync(cfg: MoneyConfig, sync: BankSyncPayload, nowISO: string, holderName?: string): MoneyConfig {
   const next: MoneyConfig = { ...cfg };
+  if (holderName) next.accountHolder = holderName;
   if (sync.checking != null) next.checkingBalance = Math.round(sync.checking * 100) / 100;
   if (sync.savings != null) next.savingsBalance = Math.round(sync.savings * 100) / 100;
   next.balanceAsOf = sync.asOf;
@@ -1053,7 +1071,48 @@ export function applyBankSync(cfg: MoneyConfig, sync: BankSyncPayload, nowISO: s
   // bill set, so nothing is double-counted. Manual logs are kept as-is; only
   // the bank-derived slice is rebuilt each sync.
   const manualSpend = (cfg.spend ?? []).filter((e) => e.source !== "bank");
-  const bankSpend = everydaySpendFromBank(sync.transactions, next.bills, nowISO, holderName);
+  const bankSpend = everydaySpendFromBank(sync.transactions, next.bills, nowISO, holderName, cfg.merchantRules);
   next.spend = [...manualSpend, ...bankSpend];
   return next;
+}
+
+// The merchant key used for a learned rule — same normalization the matcher
+// uses, so a rule set from any one charge catches every charge from that name.
+export function merchantKeyFor(name: string): string {
+  return bankBillCompact(bankBillKey(name));
+}
+
+/**
+ * Teach the app what a merchant's charges really are — the "always learning"
+ * write path. Upserts one rule (keyed by merchant) and INSTANTLY re-derives the
+ * bank-spend slice from the stored transactions, so a tap or an EILA correction
+ * updates every past and future charge with no re-sync. kind "remove" forgets
+ * the rule (back to auto-detection).
+ */
+export function setMerchantRule(
+  cfg: MoneyConfig,
+  merchantName: string,
+  kind: MerchantRule["kind"] | "remove",
+  category: string | undefined,
+  nowISO: string,
+): MoneyConfig {
+  const key = merchantKeyFor(merchantName);
+  if (key.length < 3) return cfg;
+  const others = (cfg.merchantRules ?? []).filter((r) => merchantKeyFor(r.key) !== key);
+  const merchantRules =
+    kind === "remove"
+      ? others
+      : [...others, { key, label: bankBillDisplayName(merchantName), kind, category: kind === "everyday" ? category : undefined }];
+  const withRule: MoneyConfig = { ...cfg, merchantRules };
+  return recomputeBankSpend(withRule, nowISO);
+}
+
+/** Re-run bank-spend classification over the stored transactions with the
+ * current rules/bills — used after a rule change so the dashboard updates now. */
+export function recomputeBankSpend(cfg: MoneyConfig, nowISO: string): MoneyConfig {
+  const txns = cfg.bankTransactions;
+  if (!txns?.length) return cfg;
+  const manualSpend = (cfg.spend ?? []).filter((e) => e.source !== "bank");
+  const bankSpend = everydaySpendFromBank(txns, cfg.bills, nowISO, cfg.accountHolder, cfg.merchantRules);
+  return { ...cfg, spend: [...manualSpend, ...bankSpend] };
 }

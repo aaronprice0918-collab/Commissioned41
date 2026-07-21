@@ -117,6 +117,31 @@ export interface MoneyConfig {
   /** Recent settled bank activity from the last sync (newest first, outflows
    * negative) — EILA's ground truth for "where did it go". */
   bankTransactions?: { date: string; name: string; amount: number }[];
+  /** The account holder's name (from their profile at sync time) — lets a
+   * re-classify recompute still catch Zelle/transfers to themselves. */
+  accountHolder?: string;
+  /** What the member (or EILA) taught the app about a merchant — applied to
+   * every past AND future transaction from it, so a correction only happens
+   * once. This is the "always learning" layer. */
+  merchantRules?: MerchantRule[];
+}
+
+/** A learned correction for one merchant: "these charges are actually X."
+ * Tapping a synced line (or telling EILA) writes one of these; every sync then
+ * classifies that merchant this way automatically. */
+export interface MerchantRule {
+  /** Normalized merchant key (matches how transactions are keyed). */
+  key: string;
+  /** Friendly merchant name to show the member. */
+  label: string;
+  /** What this merchant's charges really are:
+   *  - "everyday": real spending (optionally with a category)
+   *  - "bill": a recurring bill (kept out of everyday)
+   *  - "debt": a loan/card payment (kept out of everyday)
+   *  - "ignore": not spending at all (transfer between own accounts) */
+  kind: "everyday" | "bill" | "debt" | "ignore";
+  /** For "everyday": which bucket (Groceries, Gas, Dining, Fun…). */
+  category?: string;
 }
 
 export function defaultMoneyConfig(): MoneyConfig {
