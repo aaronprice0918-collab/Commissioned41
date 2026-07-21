@@ -1,0 +1,33 @@
+One thing I can't do remotely — the CI workflow file. GitHub blocks my integration from touching workflow files (security restriction).
+
+Quickest way: click here to create the file, paste this in, and commit:
+
+name: CI
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+      - run: npm ci
+      - name: Lint
+        run: npx turbo lint --filter='./apps/*'
+      - name: Unit tests
+        run: npx turbo test --filter='./apps/*'
+      - name: Build
+        run: npx turbo build
+        env:
+          NEXT_TELEMETRY_DISABLED: "1"
+          NEXT_PUBLIC_SUPABASE_URL: "https://example.supabase.co"
+          NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY: "ci-placeholder"
+          NEXT_PUBLIC_SUPABASE_ANON_KEY: "ci-placeholder"
+          NEXT_PUBLIC_OWNER_EMAIL: "owner@example.com"
+Takes 30 seconds. Everything else I'm handling.
