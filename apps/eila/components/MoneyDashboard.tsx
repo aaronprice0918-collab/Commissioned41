@@ -30,7 +30,9 @@ import {
   monthChecks,
   merchantKeyFor,
   accountsSummary,
+  accountLabelFor,
   setLinkedAccounts,
+  setSpendAccount,
   safeToSpend,
   seedBudgetsFromProfile,
   setMerchantRule,
@@ -547,6 +549,7 @@ export function MoneyDashboard() {
         cfg={cfg}
         onRemove={(id) => updateMoney(removeSpend(cfg, id))}
         onReclassify={(merchant, kind, category, opts) => updateMoney(setMerchantRule(cfg, merchant, kind, category, todayIso(), opts))}
+        onSetAccount={(entry, accountId) => updateMoney(setSpendAccount(cfg, entry, accountId, todayIso()))}
       />
       <AccountsSheet
         open={accountsOpen}
@@ -558,8 +561,8 @@ export function MoneyDashboard() {
         open={logOpen}
         onClose={() => setLogOpen(false)}
         cfg={cfg}
-        onLog={(amount, category, note) => {
-          updateMoney(addSpend(cfg, { amount, category, note }, todayIso(), uid));
+        onLog={(amount, category, note, account) => {
+          updateMoney(addSpend(cfg, { amount, category, note, account }, todayIso(), uid));
           setLogOpen(false);
         }}
       />
@@ -1007,15 +1010,17 @@ function CashCurve({ points }: { points: { date: string; balance: number }[] }) 
  * user's own budget categories first, familiar defaults after. */
 export function LogSpendSheet({
   open, onClose, cfg, onLog,
-}: { open: boolean; onClose: () => void; cfg: MoneyConfig; onLog: (amount: number, category: string, note?: string) => void }) {
+}: { open: boolean; onClose: () => void; cfg: MoneyConfig; onLog: (amount: number, category: string, note?: string, account?: string) => void }) {
   const [amount, setAmount] = useState("");
   const [category, setCategory] = useState("");
   const [note, setNote] = useState("");
+  const [account, setAccount] = useState("");
   const [nudge, setNudge] = useState("");
   const [seenOpen, setSeenOpen] = useState(false);
-  if (open && !seenOpen) { setAmount(""); setCategory(""); setNote(""); setNudge(""); setSeenOpen(true); }
+  if (open && !seenOpen) { setAmount(""); setCategory(""); setNote(""); setAccount(""); setNudge(""); setSeenOpen(true); }
   if (!open && seenOpen) setSeenOpen(false);
 
+  const accounts = (cfg.linkedAccounts ?? []).filter((a) => a.type === "checking" || a.type === "credit");
   const chips = [...new Set([
     ...(cfg.budgets ?? []).map((b) => b.name),
     ...(cfg.spendingProfile?.categories ?? []).map((c) => c.name),
@@ -1051,6 +1056,24 @@ export function LogSpendSheet({
         <Labeled label="Note (optional)">
           <input className="field" placeholder="lunch with Tony" value={note} onChange={(e) => setNote(e.target.value)} />
         </Labeled>
+        {accounts.length > 0 && (
+          <div>
+            <div className="mb-2 px-1 text-xs font-semibold uppercase tracking-wider text-fg/70">Which account? (optional)</div>
+            <div className="flex flex-wrap gap-2">
+              {accounts.map((a) => (
+                <button
+                  key={a.id}
+                  className={`rounded-full border px-3.5 py-1.5 text-[13px] font-semibold transition-colors ${
+                    account === a.id ? "border-accent bg-accent text-white" : "border-fg/15 text-fg/75"
+                  }`}
+                  onClick={() => setAccount(account === a.id ? "" : a.id)}
+                >
+                  {a.name} · {a.institution}{a.mask ? ` ····${a.mask}` : ""}
+                </button>
+              ))}
+            </div>
+          </div>
+        )}
         {nudge && <p className="px-1 text-center text-[12.5px] font-semibold text-warn">{nudge}</p>}
         <button
           className="btn btn-primary btn-block"
@@ -1059,7 +1082,7 @@ export function LogSpendSheet({
             // category just files under Other (July 12 field report — the
             // silently-disabled button read as "logging is broken").
             if (!(amt > 0)) { setNudge("Type how much you spent — that's the only must-have."); return; }
-            onLog(amt, category.trim() || "Other", note.trim() || undefined);
+            onLog(amt, category.trim() || "Other", note.trim() || undefined, account || undefined);
           }}
         >
           <Check size={16} /> Log {amt > 0 ? money(amt) : "it"}
@@ -1077,15 +1100,18 @@ const SPEND_CATEGORIES = ["Groceries", "Gas", "Dining", "Shopping", "Fun", "Othe
  * remembers that merchant for every past and future charge. One tap also
  * removes a hand-logged entry. */
 export function SpendLogSheet({
-  open, onClose, cfg, onRemove, onReclassify,
+  open, onClose, cfg, onRemove, onReclassify, onSetAccount,
 }: {
   open: boolean; onClose: () => void; cfg: MoneyConfig;
   onRemove: (id: string) => void;
   onReclassify: (merchant: string, kind: MerchantRule["kind"] | "remove", category?: string, opts?: { amount?: number; date?: string }) => void;
+  onSetAccount: (entry: { id: string; source?: "bank"; note?: string; category: string }, accountId: string | undefined) => void;
 }) {
   const entries = [...(cfg.spend ?? [])].sort((a, b) => b.date.localeCompare(a.date));
+  const accounts = cfg.linkedAccounts ?? [];
   const [openId, setOpenId] = useState<string | null>(null);
   const [pickCatFor, setPickCatFor] = useState<string | null>(null);
+  const [pickAcctFor, setPickAcctFor] = useState<string | null>(null);
   const ruleKeys = new Set((cfg.merchantRules ?? []).map((r) => merchantKeyFor(r.key)));
   const isLearned = (merchant?: string) => !!merchant && ruleKeys.has(merchantKeyFor(merchant));
 
@@ -1107,6 +1133,7 @@ export function SpendLogSheet({
             const merchant = e.note || e.category;
             const isBank = e.source === "bank";
             const expanded = openId === e.id;
+            const acctLabel = accountLabelFor(cfg, e.account);
             return (
               <div key={e.id} className="glass p-3" style={{ borderRadius: 14 }}>
                 <div className="flex items-center gap-3">
@@ -1136,6 +1163,38 @@ export function SpendLogSheet({
                     </button>
                   )}
                 </div>
+
+                {/* Which account did this come out of? A pill on every line —
+                    tap to pick a bank. For synced lines EILA remembers it for
+                    that merchant; for hand-logged ones it sets just this entry. */}
+                {accounts.length > 0 && (
+                  <div className="mt-2">
+                    <button
+                      className="inline-flex max-w-full items-center gap-1 rounded-full border border-fg/12 px-2.5 py-1 text-[11px] font-medium text-fg/70 active:scale-95"
+                      onClick={() => { setPickAcctFor(pickAcctFor === e.id ? null : e.id); setOpenId(null); setPickCatFor(null); }}
+                      aria-label={acctLabel ? `From ${acctLabel}. Tap to change the account.` : "Set which account this came from"}
+                    >
+                      <Wallet size={11} className="shrink-0 text-fg/45" />
+                      {acctLabel ? <span className="truncate">{acctLabel}</span> : <span className="text-accent">Set account</span>}
+                    </button>
+                    {pickAcctFor === e.id && (
+                      <div className="mt-2 flex flex-wrap gap-2 border-t border-fg/8 pt-2">
+                        {accounts.map((a) => (
+                          <button
+                            key={a.id}
+                            className={`rounded-full border px-3 py-1.5 text-[12px] ${e.account === a.id ? "border-accent bg-accent text-white" : "border-fg/15 text-fg/75"}`}
+                            onClick={() => { onSetAccount(e, a.id); setPickAcctFor(null); }}
+                          >
+                            {a.name} · {a.institution}{a.mask ? ` ····${a.mask}` : ""}
+                          </button>
+                        ))}
+                        {e.account && (
+                          <button className="rounded-full border border-fg/15 px-3 py-1.5 text-[12px] text-fg/55" onClick={() => { onSetAccount(e, undefined); setPickAcctFor(null); }}>Clear</button>
+                        )}
+                      </div>
+                    )}
+                  </div>
+                )}
 
                 {expanded && isBank && (
                   <div className="mt-3 border-t border-fg/8 pt-3">

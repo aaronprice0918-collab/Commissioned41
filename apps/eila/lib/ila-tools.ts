@@ -279,6 +279,19 @@ export const ILA_TOOLS = [
     },
   },
   {
+    name: "set_transaction_account",
+    description:
+      "Tell the app which account/bank a purchase came out of — answers 'that Costco charge was on my LGE checking', 'put Netflix on the BofA card', 'which account did my gas come from? the Bank of America one'. For a synced merchant the app remembers it for every past AND future charge from them; for a hand-logged purchase it sets just that one. Pass account as a plain description that matches one of their linked accounts (e.g. 'LGE checking', 'Bank of America card', '7334', 'BofA savings'). Set account to 'none' to clear it. Only works once they've added their accounts on the Money tab.",
+    input_schema: {
+      type: "object" as const,
+      properties: {
+        merchant: { type: "string", description: "The merchant/purchase name as it appears on the line (e.g. 'Costco', 'Netflix', 'Shell')." },
+        account: { type: "string", description: "Which account it came from — match a linked account by bank, name, type, or last-4 (e.g. 'LGE checking', 'BofA card', '7334'). Use 'none' to clear the account." },
+      },
+      required: ["merchant", "account"],
+    },
+  },
+  {
     name: "evaluate_purchase",
     description:
       "Run the real can-I-afford-this math on a purchase the user is considering — the ONLY correct way to answer 'can I afford to spend $500 today?' / 'should I buy X'. The verdict is judged against their never-go-below floor across every projected day ahead (clear / tight / wait-for-the-check / no), plus what's left after, deals-of-work cost, and the month's low point. Never estimate this by hand — run it, then deliver the verdict in your own voice, straight.",

@@ -10,7 +10,7 @@ import { dealUnits, productDefs } from "./fni";
 import type { IlaToolCall } from "./ila-tools";
 import type { Bill, MoneyConfig, MoneyGoal } from "./money/types";
 import { defaultMoneyConfig } from "./money/types";
-import { addSpend, applyBankSync, budgetMonth, evaluatePurchase, incomeExpectation, removeSpend, resolvePaydays, setMerchantRule, upsertBudget, type BankSyncPayload } from "./money/engine";
+import { addSpend, applyBankSync, budgetMonth, evaluatePurchase, incomeExpectation, removeSpend, resolvePaydays, setMerchantRule, merchantKeyFor, setSpendAccount, accountLabelFor, upsertBudget, type BankSyncPayload } from "./money/engine";
 import { forecast, localDayKey } from "./engine";
 import { parseLoggCsv } from "./loggImport";
 
@@ -586,6 +586,45 @@ export async function executeIlaTool(call: IlaToolCall, ctx: HandsCtx): Promise<
           : "";
         return {
           content: `Done — ${merchant} is now ${label}, applied to every past and future charge. I'll remember it.${monthNote}`,
+          friendly: `✓ ${merchant} → ${label}`,
+        };
+      }
+
+      case "set_transaction_account": {
+        const cfg = ctx.profile.money ?? defaultMoneyConfig();
+        const merchant = String(call.input.merchant ?? "").trim();
+        const acctQuery = String(call.input.account ?? "").trim();
+        if (!merchant) return { content: "Which purchase? Give the merchant name as it shows on the line.", isError: true };
+        const accounts = cfg.linkedAccounts ?? [];
+        if (!accounts.length) {
+          return { content: "No accounts are set up yet — add your banks on the Money tab first (the 'Your accounts' card), then I can tag purchases to them.", isError: true };
+        }
+        const list = () => accounts.map((a) => `${a.institution} ${a.name}${a.mask ? ` ····${a.mask}` : ""}`).join(", ");
+        const clearing = /^(none|clear|unknown|remove|unset)$/i.test(acctQuery);
+        let accountId: string | undefined;
+        if (!clearing) {
+          if (!acctQuery) return { content: `Which account? You have: ${list()}.`, isError: true };
+          const words = acctQuery.toLowerCase().split(/\s+/).filter(Boolean);
+          const matches = accounts.filter((a) => {
+            const hay = `${a.institution} ${a.name} ${a.mask ?? ""} ${a.type} ${a.type === "credit" ? "card" : ""}`.toLowerCase();
+            return words.every((w) => hay.includes(w));
+          });
+          if (matches.length === 0) return { content: `No account matches "${acctQuery}". You have: ${list()}.`, isError: true };
+          if (matches.length > 1) return { content: `That could be more than one: ${matches.map((a) => `${a.institution} ${a.name}`).join(", ")}. Which one?`, isError: true };
+          accountId = matches[0].id;
+        }
+        const key = merchantKeyFor(merchant);
+        const hit = (cfg.spend ?? []).find((e) => merchantKeyFor(e.note || e.category) === key);
+        const entry = hit ?? { id: "", source: "bank" as const, note: merchant, category: merchant };
+        const next = setSpendAccount(cfg, entry, accountId, new Date().toISOString());
+        ctx.updateMoney(next);
+        if (clearing) {
+          return { content: `Cleared the account on ${merchant}.`, friendly: `✓ ${merchant} · account cleared` };
+        }
+        const label = accountLabelFor(next, accountId) ?? "that account";
+        const remembers = (entry.source === "bank") ? " I'll remember that for every charge from them." : "";
+        return {
+          content: `Got it — ${merchant} is set to ${label}.${remembers}`,
           friendly: `✓ ${merchant} → ${label}`,
         };
       }
