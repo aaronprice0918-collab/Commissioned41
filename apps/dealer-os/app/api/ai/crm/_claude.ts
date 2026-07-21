@@ -100,7 +100,28 @@ async function anthropicFetch(apiKey: string, body: Record<string, any>, tries =
 export async function callClaude(
   systemBase: string,
   messages: { role: "user" | "assistant"; content: string }[],
+  maxTokens = 700,
+  extraSystem?: string,
+) {
+  const apiKey = process.env.ANTHROPIC_API_KEY;
+  if (!apiKey) throw new Error("ANTHROPIC_API_KEY not set");
 
+  // Prompt caching: systemBase (EILA core + dealer layer + store economics) is
+  // identical across the single-shot actions (drafts, health checks, briefs),
+  // so a breakpoint on it means back-to-back actions within 5 minutes re-read
+  // it at ~0.1x. extraSystem varies per lead/action, so it stays uncached.
+  const data = await anthropicFetch(apiKey, {
+    model: ASSISTANT_MODEL,
+    max_tokens: maxTokens,
+    system: [
+      { type: "text", text: systemBase, cache_control: { type: "ephemeral" } },
+      ...(extraSystem ? [{ type: "text", text: extraSystem }] : []),
+    ],
+    messages,
+  });
+  const block = data.content?.[0];
+  return block?.type === "text" ? (block.text as string) : "";
+}
 
 // Run every tool_use block in a model turn against the live store and return the
 // tool_result blocks to feed back. Shared by the buffered and streaming loops so

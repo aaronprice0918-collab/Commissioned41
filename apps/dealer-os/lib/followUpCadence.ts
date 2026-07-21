@@ -76,7 +76,7 @@ export const CADENCE_TEMPLATES: Record<Exclude<CadenceTemplate, "custom">, { lab
 /** Get the steps for a cadence (built-in or custom). */
 export function cadenceSteps(state: CadenceState): CadenceStep[] {
   if (state.template === "custom" && state.customSteps) return state.customSteps;
-  return CADENCE_TEMPLATES[state.template]?.steps ?? [];
+  return CADENCE_TEMPLATES[state.template as keyof typeof CADENCE_TEMPLATES]?.steps ?? [];
 }
 
 /** Calculate when the next step fires based on the cadence start and step day offset. */
@@ -95,7 +95,7 @@ export function startCadence(
   customSteps?: CadenceStep[],
 ): CadenceState {
   const now = new Date().toISOString();
-  const steps = template === "custom" && customSteps ? customSteps : CADENCE_TEMPLATES[template]?.steps ?? [];
+  const steps = template === "custom" && customSteps ? customSteps : CADENCE_TEMPLATES[template as keyof typeof CADENCE_TEMPLATES]?.steps ?? [];
   return {
     template,
     startedAt: now,

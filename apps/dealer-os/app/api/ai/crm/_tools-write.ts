@@ -6,6 +6,7 @@ import { buildClosedMonth, summarizeMonth, upsertClosedMonth, type ClosedMonth }
 import { moveVisitPatch, type ServiceStatus } from "@/lib/service";
 import { moveSopPatch, normalizePartsData, type SopStatus } from "@/lib/parts";
 import { isOpenLead, scoreLead } from "@/lib/leadScore";
+import { personLabel } from "@/lib/desk";
 import { consentStatus, suppressionDeadline } from "@/lib/consent";
 import { sendTextToLead } from "@/lib/smsServer";
 import { twilioConfigured } from "@/lib/twilio";

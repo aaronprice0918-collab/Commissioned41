@@ -13,6 +13,9 @@ import {
   type ProductKey,
   type Deal,
   isRetail,
+  salesLeaderboard,
+  financeLeaderboard,
+  unitsLabel,
 } from "@/lib/data";
 import { computePay, type CompPlan } from "@/lib/payEngine";
 import { periodFor, CALENDAR_MONTH_CYCLE } from "@/lib/payCycle";

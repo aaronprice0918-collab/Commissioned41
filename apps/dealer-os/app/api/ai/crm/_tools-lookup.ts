@@ -1,8 +1,12 @@
 import type { EILAContext } from "./_context";
+import { scopeLeads } from "./_context";
 import { currency, samePerson } from "@/lib/data";
+import { personLabel } from "@/lib/desk";
 import { decodeVin, isValidVin } from "@/lib/vin";
 import { speedClock, speedStats } from "@/lib/speedToLead";
 import { consentStatus, consentSummary, suppressionDeadline } from "@/lib/consent";
+
+const num = (v: any) => (Number.isFinite(+v) ? +v : 0);
 
 // lookup_rate — quote an exact BUY rate off the loaded lender rate sheet, by
 // lender / tier / term / model-year. Rate sheets fan out by year×term×tier, so
