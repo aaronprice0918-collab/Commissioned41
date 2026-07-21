@@ -13,7 +13,12 @@
     "typecheck": "turbo typecheck"
   },
   "devDependencies": {
+    "sharp": "^0.35.3",
     "turbo": "^2.5.0"
+  },
+  "overrides": {
+    "sharp": "^0.35.3",
+    "postcss": "^8.5.20"
   },
   "engines": {
     "node": ">=20 <25"
