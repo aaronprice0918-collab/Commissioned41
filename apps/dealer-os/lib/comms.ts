@@ -20,6 +20,8 @@ export type LeadMessage = {
   at: string; // ISO
   by?: string; // staff member who sent it (outbound)
   sid?: string; // Twilio message SID
+  mediaUrl?: string; // MMS attachment URL (outbound: what we sent; inbound: what they sent)
+  sentiment?: "hot" | "warm" | "neutral" | "cold" | "stop"; // inbound only — scored at webhook time
 };
 
 type MessageCarrier = { messages?: LeadMessage[] };

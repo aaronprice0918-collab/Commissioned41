@@ -1,0 +1,7 @@
+{
+  "extends": "@commissioned41/tsconfig/base.json",
+  "compilerOptions": {
+    "outDir": "dist"
+  },
+  "include": ["src"]
+}

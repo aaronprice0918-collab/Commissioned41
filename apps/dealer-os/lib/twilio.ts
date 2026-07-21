@@ -26,7 +26,7 @@ export function twilioFromNumber(): string {
   return process.env.TWILIO_FROM_NUMBER || "";
 }
 
-export async function sendSms(to: string, body: string, fromOverride?: string): Promise<{ ok: true; sid: string } | { ok: false; error: string }> {
+export async function sendSms(to: string, body: string, fromOverride?: string, mediaUrl?: string): Promise<{ ok: true; sid: string } | { ok: false; error: string }> {
   const sid = process.env.TWILIO_ACCOUNT_SID;
   const token = process.env.TWILIO_AUTH_TOKEN;
   // Per-org number first (commsConfig), env number as the founding-store fallback.
@@ -34,6 +34,10 @@ export async function sendSms(to: string, body: string, fromOverride?: string): 
   if (!sid || !token || !from) return { ok: false, error: "Texting isn't configured yet." };
 
   const params = new URLSearchParams({ To: to, From: from, Body: body });
+  // MMS: attach an image/video URL. Twilio fetches the media and delivers it
+  // alongside the text — works on US/CA numbers, falls back to a link on
+  // carriers that don't support MMS.
+  if (mediaUrl) params.set("MediaUrl", mediaUrl);
   const res = await fetch(`https://api.twilio.com/2010-04-01/Accounts/${sid}/Messages.json`, {
     method: "POST",
     headers: {
