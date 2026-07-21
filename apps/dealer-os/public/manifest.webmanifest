@@ -1,0 +1,53 @@
+{
+  "name": "Dealer Mission OS",
+  "short_name": "Mission OS",
+  "description": "Dealer Mission OS — the dealership operating system by Commissioned 41.",
+  "start_url": "/",
+  "scope": "/",
+  "display": "standalone",
+  "display_override": ["standalone", "browser"],
+  "orientation": "any",
+  "background_color": "#070b16",
+  "theme_color": "#070b16",
+  "categories": ["business", "productivity", "finance"],
+  "icons": [
+    {
+      "src": "/mission-icon-192.png?v=6",
+      "sizes": "192x192",
+      "type": "image/png",
+      "purpose": "any"
+    },
+    {
+      "src": "/mission-icon-512.png?v=6",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "any"
+    },
+    {
+      "src": "/mission-icon-512.png?v=6",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "maskable"
+    }
+  ],
+  "shortcuts": [
+    {
+      "name": "CRM Desk",
+      "short_name": "CRM",
+      "url": "/crm-desk",
+      "icons": [{ "src": "/mission-icon-192.png?v=6", "sizes": "192x192", "type": "image/png" }]
+    },
+    {
+      "name": "Deal Center",
+      "short_name": "Deals",
+      "url": "/deal-center",
+      "icons": [{ "src": "/mission-icon-192.png?v=6", "sizes": "192x192", "type": "image/png" }]
+    },
+    {
+      "name": "My Scorecard",
+      "short_name": "Scorecard",
+      "url": "/my-scorecard",
+      "icons": [{ "src": "/mission-icon-192.png?v=6", "sizes": "192x192", "type": "image/png" }]
+    }
+  ]
+}

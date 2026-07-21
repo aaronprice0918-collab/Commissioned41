@@ -1,0 +1,32 @@
+name: CI
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+      - run: npm ci
+
+      # Turbo runs lint → test → build across all apps + packages in
+      # dependency order. Each app's own scripts define what those mean.
+      - name: Lint
+        run: npx turbo lint --filter='./apps/*'
+      - name: Unit tests
+        run: npx turbo test --filter='./apps/*'
+      - name: Build (typechecks)
+        run: npx turbo build
+        env:
+          NEXT_TELEMETRY_DISABLED: "1"
+          # Placeholder env vars so builds don't fail on missing config
+          NEXT_PUBLIC_SUPABASE_URL: "https://example.supabase.co"
+          NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY: "ci-placeholder"
+          NEXT_PUBLIC_SUPABASE_ANON_KEY: "ci-placeholder"
+          NEXT_PUBLIC_OWNER_EMAIL: "owner@example.com"

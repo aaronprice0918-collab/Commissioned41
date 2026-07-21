@@ -1,0 +1,49 @@
+<svg width="512" height="512" viewBox="0 0 512 512" fill="none" xmlns="http://www.w3.org/2000/svg" role="img" aria-labelledby="dealerMissionTitle dealerMissionDesc">
+  <title id="dealerMissionTitle">Dealer Mission OS Mark</title>
+  <desc id="dealerMissionDesc">A clean architectural graphite M for Dealer Mission OS.</desc>
+  <defs>
+    <linearGradient id="leftFace" x1="112" y1="140" x2="188" y2="370" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#131416"/>
+      <stop offset="0.42" stop-color="#52565D"/>
+      <stop offset="1" stop-color="#17191C"/>
+    </linearGradient>
+    <linearGradient id="rightFace" x1="400" y1="140" x2="326" y2="370" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#141518"/>
+      <stop offset="0.45" stop-color="#5C6067"/>
+      <stop offset="1" stop-color="#17191C"/>
+    </linearGradient>
+    <linearGradient id="leftArm" x1="150" y1="130" x2="265" y2="286" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#090A0B"/>
+      <stop offset="0.45" stop-color="#6B7078"/>
+      <stop offset="1" stop-color="#202329"/>
+    </linearGradient>
+    <linearGradient id="rightArm" x1="366" y1="130" x2="248" y2="286" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#0D0E10"/>
+      <stop offset="0.48" stop-color="#71767E"/>
+      <stop offset="1" stop-color="#1E2126"/>
+    </linearGradient>
+    <linearGradient id="edgeLight" x1="138" y1="126" x2="378" y2="300" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#F0F2F5"/>
+      <stop offset="0.28" stop-color="#A8ADB5"/>
+      <stop offset="0.55" stop-color="#343840"/>
+      <stop offset="0.78" stop-color="#D9DDE2"/>
+      <stop offset="1" stop-color="#777D86"/>
+    </linearGradient>
+    <filter id="softShadow" x="72" y="104" width="368" height="312" filterUnits="userSpaceOnUse" color-interpolation-filters="sRGB">
+      <feDropShadow dx="0" dy="18" stdDeviation="16" flood-color="#0F172A" flood-opacity="0.20"/>
+      <feDropShadow dx="0" dy="3" stdDeviation="2" flood-color="#0F172A" flood-opacity="0.22"/>
+    </filter>
+  </defs>
+  <g filter="url(#softShadow)">
+    <path d="M116 150L156 126L156 356L116 374V150Z" fill="url(#leftFace)"/>
+    <path d="M156 126L187 151L187 345L156 356V126Z" fill="#2B2F35"/>
+    <path d="M396 150L356 126L356 356L396 374V150Z" fill="url(#rightFace)"/>
+    <path d="M356 126L325 151L325 345L356 356V126Z" fill="#252930"/>
+    <path d="M156 126L256 240L236 279L139 169L156 126Z" fill="url(#leftArm)"/>
+    <path d="M356 126L256 240L276 279L373 169L356 126Z" fill="url(#rightArm)"/>
+    <path d="M236 279L256 240L276 279L256 303L236 279Z" fill="#101215"/>
+    <path d="M158 127L256 239L354 127" stroke="url(#edgeLight)" stroke-width="9" stroke-linecap="square" stroke-linejoin="miter" opacity="0.74"/>
+    <path d="M119 151L156 129M393 151L356 129" stroke="#F5F7FA" stroke-width="6" stroke-linecap="square" opacity="0.42"/>
+    <path d="M116 374L156 356L187 345M396 374L356 356L325 345" stroke="#050607" stroke-width="5" stroke-linecap="square" opacity="0.42"/>
+  </g>
+</svg>

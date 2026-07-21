@@ -1,0 +1,46 @@
+{
+  "name": "@commissioned41/dealer-os",
+  "version": "0.1.0",
+  "private": true,
+  "engines": {
+    "node": ">=20 <25"
+  },
+  "overrides": {
+    "postcss": "^8.5.10"
+  },
+  "scripts": {
+    "dev": "next dev",
+    "dev:staging": "set -a && . ./.env.staging.local && set +a && NEXT_PUBLIC_SUPABASE_URL=\"$STAGING_SUPABASE_URL\" NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY=\"$STAGING_SUPABASE_PUBLISHABLE_KEY\" NEXT_PUBLIC_SUPABASE_ANON_KEY=\"$STAGING_SUPABASE_PUBLISHABLE_KEY\" next dev -p 3002",
+    "build": "next build",
+    "start": "next start",
+    "start:store": "next start --hostname 0.0.0.0 --port 3000",
+    "seed:supabase": "node scripts/seed-supabase.mjs",
+    "test": "tsx --test \"lib/**/*.test.ts\"",
+    "lint": "eslint ."
+  },
+  "dependencies": {
+    "@supabase/supabase-js": "^2.108.1",
+    "@vercel/functions": "^3.7.5",
+    "clsx": "^2.1.1",
+    "lucide-react": "^0.468.0",
+    "next": "^16.2.10",
+    "pdf-lib": "^1.17.1",
+    "react": "^19.2.7",
+    "react-dom": "^19.2.7",
+    "stripe": "^22.2.3",
+    "xlsx": "npm:@e965/xlsx@0.20.3",
+    "@commissioned41/ila-core": "*"
+  },
+  "devDependencies": {
+    "@types/node": "25.9.3",
+    "@types/react": "19.2.17",
+    "@types/react-dom": "^19.2.3",
+    "autoprefixer": "^10.4.20",
+    "eslint": "^9.39.5",
+    "eslint-config-next": "^16.2.10",
+    "postcss": "^8.5.10",
+    "tailwindcss": "^3.4.17",
+    "tsx": "^4.22.4",
+    "typescript": "^5.7.2"
+  }
+}

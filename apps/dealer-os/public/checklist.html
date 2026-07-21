@@ -1,0 +1,127 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+<meta name="theme-color" content="#08090c" />
+<meta name="apple-mobile-web-app-capable" content="yes" />
+<meta name="apple-mobile-web-app-title" content="C41 Checklist" />
+<meta name="robots" content="noindex" />
+<title>Commissioned 41 — Founder Checklist</title>
+<style>
+  *{margin:0;padding:0;box-sizing:border-box;-webkit-tap-highlight-color:transparent}
+  body{background:#08090c;color:#e9edf1;font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif;
+    -webkit-font-smoothing:antialiased;padding:24px 16px 48px;max-width:640px;margin:0 auto;min-height:100vh}
+  .wm{font-weight:800;letter-spacing:.28em;font-size:13px;text-align:center;
+    background:linear-gradient(180deg,#fff,#c4cad2 55%,#7f868f);-webkit-background-clip:text;background-clip:text;-webkit-text-fill-color:transparent}
+  h1{text-align:center;font-size:22px;font-weight:700;margin-top:8px}
+  .sub{text-align:center;color:#8a909a;font-size:12px;letter-spacing:.04em;margin-top:6px}
+  .head{display:flex;align-items:center;gap:12px;margin:24px 0 16px}
+  .count{font-size:14px;color:#9aa0a9;white-space:nowrap}
+  .track{flex:1;height:7px;background:#1b1d23;border-radius:999px;overflow:hidden}
+  .fill{height:100%;width:0;background:#34d399;transition:width .25s}
+  .item{display:flex;gap:13px;align-items:flex-start;background:#101218;border:1px solid rgba(255,255,255,.08);
+    border-radius:14px;padding:15px 16px;margin-bottom:11px;cursor:pointer;transition:background .12s}
+  .item:active{background:#15171e}
+  .box{flex:0 0 24px;width:24px;height:24px;margin-top:1px;border:1.5px solid #3a3d45;border-radius:7px;
+    display:flex;align-items:center;justify-content:center;color:transparent;font-size:15px;font-weight:700}
+  .item.done .box{background:#34d399;border-color:#34d399;color:#06281d}
+  .body{flex:1;min-width:0}
+  .title{font-size:16px;font-weight:600;line-height:1.35}
+  .item.done .title{text-decoration:line-through;color:#6b7178}
+  .meta{margin-top:8px;display:flex;flex-wrap:wrap;gap:6px}
+  .chip{font-size:12px;background:#1b1d23;color:#9aa0a9;padding:3px 9px;border-radius:7px}
+  .pri{background:rgba(216,177,90,.16);color:#d8b15a}
+  .steps{margin-top:9px;font-size:13.5px;line-height:1.55;color:#9aa0a9}
+  .item.done .steps{color:#5f656d}
+  .foot{text-align:center;color:#4f545b;font-size:11px;letter-spacing:.14em;margin-top:24px}
+  .reset{display:block;margin:18px auto 0;background:none;border:1px solid rgba(255,255,255,.12);color:#8a909a;
+    font-size:12px;padding:8px 16px;border-radius:999px;cursor:pointer}
+</style>
+</head>
+<body>
+  <div class="wm">COMMISSIONED 41</div>
+  <h1>Founder Checklist</h1>
+  <div class="sub">Know Your Mission. Execute With Purpose.</div>
+
+  <div class="head">
+    <div class="count"><span id="done">0</span> of 6 done</div>
+    <div class="track"><div class="fill" id="fill"></div></div>
+  </div>
+
+  <div id="list">
+    <div class="item" data-id="1">
+      <div class="box">&#10003;</div>
+      <div class="body">
+        <div class="title">Revoke the old Vercel token</div>
+        <div class="meta"><span class="chip">Security</span><span class="chip">~1 min</span></div>
+        <div class="steps">vercel.com &rarr; Settings &rarr; Tokens &rarr; delete the old one.</div>
+      </div>
+    </div>
+    <div class="item" data-id="2">
+      <div class="box">&#10003;</div>
+      <div class="body">
+        <div class="title">Create a free staging Supabase</div>
+        <div class="meta"><span class="chip pri">Priority</span><span class="chip">Unblocks multi-tenancy</span><span class="chip">~5 min</span></div>
+        <div class="steps">supabase.com &rarr; New project (free), then send me the Project URL, anon key, and service_role key.</div>
+      </div>
+    </div>
+    <div class="item" data-id="3">
+      <div class="box">&#10003;</div>
+      <div class="body">
+        <div class="title">Set up Stripe (test keys)</div>
+        <div class="meta"><span class="chip pri">Priority</span><span class="chip">Unblocks billing</span><span class="chip">~10 min</span></div>
+        <div class="steps">stripe.com &rarr; Developers &rarr; API keys (Test mode), then send me the test publishable + secret keys.</div>
+      </div>
+    </div>
+    <div class="item" data-id="4">
+      <div class="box">&#10003;</div>
+      <div class="body">
+        <div class="title">Business email on commissioned41.com</div>
+        <div class="meta"><span class="chip">Makes legal@ / privacy@ work</span><span class="chip">~10 min</span></div>
+        <div class="steps">Cloudflare Email Routing (free) &rarr; forward legal@, privacy@, and aaron@ to your Gmail.</div>
+      </div>
+    </div>
+    <div class="item" data-id="5">
+      <div class="box">&#10003;</div>
+      <div class="body">
+        <div class="title">Get an EIN + business bank account</div>
+        <div class="meta"><span class="chip">Real-world</span><span class="chip">~30 min</span></div>
+        <div class="steps">irs.gov &rarr; apply for an EIN (free), then open a business checking account.</div>
+      </div>
+    </div>
+    <div class="item" data-id="6">
+      <div class="box">&#10003;</div>
+      <div class="body">
+        <div class="title">Have a lawyer skim Terms &amp; Privacy</div>
+        <div class="meta"><span class="chip">Before first paid dealer</span></div>
+        <div class="steps">Send them commissioned41.com/terms and commissioned41.com/privacy.</div>
+      </div>
+    </div>
+  </div>
+
+  <button class="reset" id="reset">Reset checklist</button>
+  <div class="foot">A COMMISSIONED 41 TOOL</div>
+
+<script>
+  var KEY='c41-founder-checklist-v1', saved={};
+  try{saved=JSON.parse(localStorage.getItem(KEY)||'{}')}catch(e){}
+  var items=[].slice.call(document.querySelectorAll('.item'));
+  function render(){
+    var n=0;
+    items.forEach(function(it){var on=!!saved[it.dataset.id];it.classList.toggle('done',on);if(on)n++;});
+    document.getElementById('done').textContent=n;
+    document.getElementById('fill').style.width=Math.round(n/items.length*100)+'%';
+  }
+  items.forEach(function(it){it.addEventListener('click',function(){
+    saved[it.dataset.id]=!saved[it.dataset.id];
+    try{localStorage.setItem(KEY,JSON.stringify(saved))}catch(e){}
+    render();
+  });});
+  document.getElementById('reset').addEventListener('click',function(){
+    saved={};try{localStorage.setItem(KEY,'{}')}catch(e){}render();
+  });
+  render();
+</script>
+</body>
+</html>

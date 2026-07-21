@@ -1,0 +1,313 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/*
+  Commissioned 41 — brand site.
+  EILA Motion identity (July 2026): a deep navy product mark, electric
+  blue, and teal movement on a soft operating-system canvas.
+*/
+:root {
+  --font-display: var(--font-inter), ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  --font-body: var(--font-inter), ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+
+  --mission-navy: 244 248 252;   /* light page base */
+  --mission-deep: 232 242 250;
+  --mission-panel: 255 255 255;
+  --mission-green: 19 154 245;   /* electric EILA blue */
+  --mission-gold: 31 214 195;    /* teal motion accent */
+  --mission-line: 9 40 84;       /* navy structural line */
+  --mission-platinum: 78 92 112; /* gunmetal mid for chrome text */
+  --mission-crimson: 196 52 60;  /* restrained crimson punctuation */
+  /* Tailwind's `white` rides this variable (tailwind.config.ts): the site is
+     a light world, so every white/NN utility in the markup reads as ink/NN. */
+  --c41-white: 15 23 42;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html {
+  scroll-behavior: smooth;
+}
+
+body {
+  margin: 0;
+  color: #0f172a;
+  font-family: var(--font-body);
+  /* Solid base; the viewport-anchored wash lives on the fixed ambient layer
+     (see .ambient-field) — avoids background-attachment:fixed, which is janky on
+     mobile and breaks compositing. */
+  background: rgb(244 248 252);
+  -webkit-font-smoothing: antialiased;
+  text-rendering: optimizeLegibility;
+}
+
+/* Fixed, viewport-anchored wash behind all content — paper white with a soft
+   blue sky bleeding in from the top, a whisper of warmth at the edge. */
+.ambient-field {
+  background:
+    radial-gradient(120% 70% at 50% -10%, rgb(19 154 245 / 0.13), transparent 58%),
+    radial-gradient(90% 60% at 85% 6%, rgb(31 214 195 / 0.10), transparent 60%),
+    linear-gradient(180deg, rgb(248 251 253) 0%, rgb(242 247 251) 48%, rgb(231 240 249) 100%);
+}
+
+::selection {
+  background: rgb(var(--mission-green) / 0.22);
+  color: #0f172a;
+}
+
+/* ---- Living border (ported from the product app; relit for paper-white:
+   a quiet blue current circling the card without a neon flash) ---- */
+@property --lb-angle {
+  syntax: "<angle>";
+  inherits: false;
+  initial-value: 0deg;
+}
+.living-border {
+  position: relative;
+}
+.living-border::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  padding: 1.6px;
+  background: conic-gradient(
+    from var(--lb-angle),
+    rgb(var(--mission-green) / 0.10) 0deg,
+    rgb(var(--mission-green) / 0.10) 196deg,
+    rgb(19 154 245 / 0.56) 274deg,
+    rgb(19 154 245 / 0.9) 306deg,
+    rgb(31 214 195 / 1) 322deg,
+    rgb(19 154 245 / 0.9) 338deg,
+    rgb(var(--mission-green) / 0.10) 360deg
+  );
+  -webkit-mask: linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0);
+  -webkit-mask-composite: xor;
+  mask: linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0);
+  mask-composite: exclude;
+  filter: drop-shadow(0 0 6px rgb(19 154 245 / 0.35));
+  animation: lbSpin 10s linear infinite;
+  pointer-events: none;
+}
+@keyframes lbSpin {
+  to {
+    --lb-angle: 360deg;
+  }
+}
+
+/* ---- Card surfaces (was dark glass; now the Sky white card) ---- */
+.glass {
+  position: relative;
+  border-radius: 18px;
+  background: #ffffff;
+  border: 1px solid rgb(15 23 42 / 0.07);
+  box-shadow:
+    0 1px 2px rgb(15 23 42 / 0.04),
+    0 24px 54px -28px rgb(37 78 178 / 0.28);
+}
+.glass-hover {
+  transition: transform 0.4s cubic-bezier(0.2, 0.8, 0.2, 1), border-color 0.4s, box-shadow 0.4s;
+}
+.glass-hover:hover {
+  transform: translateY(-4px);
+  border-color: rgb(var(--mission-green) / 0.4);
+  box-shadow:
+    0 1px 2px rgb(15 23 42 / 0.04),
+    0 36px 80px -30px rgb(37 78 178 / 0.38),
+    0 0 0 1px rgb(var(--mission-green) / 0.12);
+}
+
+/* ---- Wordmark treatment — the machined gunmetal chrome (the "M" standard) ---- */
+.chrome-text {
+  background-image: linear-gradient(180deg, #5a636d 0%, #1f242a 55%, #3d444d 100%);
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+}
+/* Living chrome — a light band drifts across the gunmetal. Slow and calm. */
+.chrome-shimmer {
+  background-image: linear-gradient(
+    110deg,
+    #2a3038 0%,
+    #3d444d 32%,
+    #8b939d 50%,
+    #3d444d 68%,
+    #2a3038 100%
+  );
+  background-size: 250% 100%;
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+  animation: chromeSweep 7s ease-in-out infinite;
+}
+@keyframes chromeSweep {
+  0% { background-position: 130% 0; }
+  100% { background-position: -130% 0; }
+}
+
+.steel-text {
+  color: rgb(var(--mission-green));
+}
+.crimson-text {
+  color: rgb(var(--mission-crimson));
+}
+
+/* ---- Chrome artwork (platinum PNGs built for dark surfaces) — deepen to
+   gunmetal so the facets hold on paper-white. Same treatment as the app. ---- */
+.chrome-art {
+  filter: brightness(0.5) contrast(1.5) drop-shadow(0 1px 2px rgb(15 23 42 / 0.3));
+}
+
+/* ---- Buttons ---- */
+.btn {
+  position: relative;
+  overflow: hidden;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.55rem;
+  border-radius: 999px;
+  font-weight: 600;
+  letter-spacing: 0.01em;
+  padding: 0.95rem 1.7rem;
+  transition: transform 0.25s cubic-bezier(0.2, 0.8, 0.2, 1), box-shadow 0.25s, background 0.25s, border-color 0.25s;
+  cursor: pointer;
+  white-space: nowrap;
+}
+/* premium sheen — a light band sweeps across on hover */
+.btn::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(110deg, transparent 30%, rgb(255 255 255 / 0.35) 50%, transparent 70%);
+  transform: translateX(-120%);
+  transition: transform 0.7s cubic-bezier(0.2, 0.8, 0.2, 1);
+  pointer-events: none;
+}
+.btn:hover::after {
+  transform: translateX(120%);
+}
+.btn-primary {
+  color: #ffffff;
+  color: #061a36;
+  background: linear-gradient(135deg, #139af5 0%, #31e0c4 100%);
+  box-shadow: 0 14px 34px -12px rgb(var(--mission-green) / 0.65), inset 0 1px 0 rgb(255 255 255 / 0.35);
+}
+.btn-primary:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 20px 44px -12px rgb(var(--mission-green) / 0.8), inset 0 1px 0 rgb(255 255 255 / 0.45);
+}
+.btn-ghost {
+  color: #0f172a;
+  background: #ffffff;
+  border: 1px solid rgb(15 23 42 / 0.12);
+  box-shadow: 0 1px 2px rgb(15 23 42 / 0.04);
+}
+.btn-ghost:hover {
+  transform: translateY(-2px);
+  border-color: rgb(var(--mission-green) / 0.55);
+  background: rgb(var(--mission-green) / 0.06);
+}
+
+/* ---- Form inputs ---- */
+.c41-input {
+  width: 100%;
+  border-radius: 12px;
+  background: #ffffff;
+  border: 1px solid rgb(15 23 42 / 0.12);
+  padding: 0.8rem 1rem;
+  font-size: 0.95rem;
+  color: #0f172a;
+  outline: none;
+  transition: border-color 0.25s, box-shadow 0.25s, background 0.25s;
+}
+.c41-input::placeholder {
+  color: rgb(15 23 42 / 0.35);
+}
+.c41-input:focus {
+  border-color: rgb(var(--mission-green) / 0.6);
+  background: #ffffff;
+  box-shadow: 0 0 0 3px rgb(var(--mission-green) / 0.14);
+}
+select.c41-input {
+  appearance: none;
+  -webkit-appearance: none;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='14' height='14' viewBox='0 0 24 24' fill='none' stroke='%23139af5' stroke-width='2.5'%3E%3Cpath d='M6 9l6 6 6-6'/%3E%3C/svg%3E");
+  background-repeat: no-repeat;
+  background-position: right 0.9rem center;
+  padding-right: 2.4rem;
+}
+
+/* ---- Reveal on scroll ---- */
+.reveal {
+  opacity: 0;
+  transform: translateY(26px);
+  filter: blur(8px);
+  transition: opacity 0.8s cubic-bezier(0.2, 0.8, 0.2, 1), transform 0.8s cubic-bezier(0.2, 0.8, 0.2, 1),
+    filter 0.8s cubic-bezier(0.2, 0.8, 0.2, 1);
+  will-change: opacity, transform, filter;
+}
+.reveal.in {
+  opacity: 1;
+  transform: translateY(0);
+  filter: blur(0);
+}
+
+/* ---- Section eyebrow — the machined plate: steel text with a hairline rule,
+   same signature as the DEALER eyebrow on the product hero. ---- */
+.eyebrow {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.6rem;
+  font-size: 0.72rem;
+  font-weight: 800;
+  letter-spacing: 0.26em;
+  text-transform: uppercase;
+  color: rgb(15 23 42 / 0.55);
+}
+.eyebrow::before {
+  content: "";
+  width: 26px;
+  height: 1px;
+  background: linear-gradient(90deg, transparent, rgb(15 23 42 / 0.45));
+}
+
+/* ---- Logo edge-fade: melts a logo's baked backdrop into the page by fading
+   the outer rim to transparent on all four sides. ---- */
+.logo-fade {
+  -webkit-mask-image: linear-gradient(to right, transparent 0%, #000 5%, #000 95%, transparent 100%),
+    linear-gradient(to bottom, transparent 0%, #000 4%, #000 96%, transparent 100%);
+  -webkit-mask-composite: source-in;
+  mask-image: linear-gradient(to right, transparent 0%, #000 5%, #000 95%, transparent 100%),
+    linear-gradient(to bottom, transparent 0%, #000 4%, #000 96%, transparent 100%);
+  mask-composite: intersect;
+}
+
+/* ---- Hairline divider ---- */
+.hairline {
+  height: 1px;
+  background: linear-gradient(90deg, transparent, rgb(var(--mission-line) / 0.4), transparent);
+}
+
+/* ---- Ambient drifting orbs ---- */
+@keyframes orbDrift {
+  0%, 100% { transform: translate(0, 0) scale(1); }
+  50% { transform: translate(40px, -30px) scale(1.12); }
+}
+@keyframes orbDrift2 {
+  0%, 100% { transform: translate(0, 0) scale(1); }
+  50% { transform: translate(-36px, 28px) scale(1.08); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  html { scroll-behavior: auto; }
+  .living-border::before { animation: none; background: rgb(var(--mission-green) / 0.4); filter: none; }
+  .reveal { opacity: 1; transform: none; filter: none; transition: none; }
+  .ambient-orb { animation: none !important; }
+  .chrome-shimmer { animation: none; }
+  .btn::after { display: none; }
+  .scroll-progress { display: none; }
+}

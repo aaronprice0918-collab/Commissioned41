@@ -1,0 +1,11 @@
+node_modules
+.next
+.data
+.env*.local
+.DS_Store
+*.tsbuildinfo
+next-env.d.ts
+
+# local deploy secrets
+.vercel-token
+.vercel

@@ -1,0 +1,90 @@
+// MissionOS Finance — data model.
+// Single-user app. Plaid is the source of truth for accounts + transactions;
+// UserConfig holds the things Plaid can't know yet (goals, expected paychecks,
+// the essentials floor) — seeded from the demo and editable later.
+
+generator client {
+  provider = "prisma-client"
+  output   = "../src/generated/prisma"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+/// One linked institution (a Plaid "Item"). Holds the encrypted access token
+/// and the cursor used for incremental transaction sync.
+model PlaidItem {
+  id          String    @id @default(cuid())
+  itemId      String    @unique
+  accessToken String // AES-256-GCM encrypted at rest
+  institution String
+  cursor      String? // transactions/sync cursor
+  status      String    @default("active")
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+  accounts    Account[]
+}
+
+model Account {
+  id               String        @id @default(cuid())
+  plaidAccountId   String        @unique
+  item             PlaidItem     @relation(fields: [plaidItemId], references: [id], onDelete: Cascade)
+  plaidItemId      String
+  name             String
+  officialName     String?
+  mask             String?
+  type             String // depository | credit | loan | investment
+  subtype          String? // checking | savings | credit card | mortgage | auto | 401k ...
+  currentBalance   Float         @default(0)
+  availableBalance Float?
+  creditLimit      Float?
+  isoCurrency      String?       @default("USD")
+  updatedAt        DateTime      @updatedAt
+  transactions     Transaction[]
+
+  @@index([plaidItemId])
+}
+
+model Transaction {
+  id                 String   @id @default(cuid())
+  plaidTransactionId String   @unique
+  account            Account  @relation(fields: [accountId], references: [id], onDelete: Cascade)
+  accountId          String
+  date               DateTime
+  name               String
+  merchantName       String?
+  /// Normalized to our convention: negative = outflow, positive = inflow.
+  amount             Float
+  category           String // our TxnCategory
+  plaidCategory      String?
+  pending            Boolean  @default(false)
+  createdAt          DateTime @default(now())
+
+  @@index([accountId])
+  @@index([date])
+}
+
+/// EILA's memory: durable notes she distills after each conversation
+/// (preferences, facts, commitments — never transient numbers). Per-app by
+/// design — these never leave Finance. Single-user, so no user column.
+model IlaMemory {
+  id        String   @id @default(cuid())
+  note      String
+  createdAt DateTime @default(now())
+
+  @@index([createdAt])
+}
+
+/// Singleton config for the one user. goals / paychecks / bills are stored as
+/// JSON for now (seeded from the demo); they graduate to real models as the
+/// Plaid recurring + pay-plan-AI phases land.
+model UserConfig {
+  id                String   @id @default("singleton")
+  name              String   @default("Aaron")
+  monthlyEssentials Float    @default(850)
+  goals             Json     @default("[]")
+  paychecks         Json     @default("[]")
+  bills             Json     @default("[]")
+  updatedAt         DateTime @updatedAt
+}

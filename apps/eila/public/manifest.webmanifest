@@ -1,0 +1,14 @@
+{
+  "name": "EILA",
+  "short_name": "EILA",
+  "description": "Your AI assistant for commission, money, and daily execution.",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#F4F8FC",
+  "theme_color": "#071B39",
+  "icons": [
+    { "src": "/icon.png", "sizes": "1024x1024", "type": "image/png", "purpose": "any" },
+    { "src": "/icon.png", "sizes": "1024x1024", "type": "image/png", "purpose": "maskable" },
+    { "src": "/apple-icon.png", "sizes": "180x180", "type": "image/png", "purpose": "any" }
+  ]
+}

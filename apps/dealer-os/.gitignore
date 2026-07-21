@@ -1,0 +1,24 @@
+.next
+tsconfig.tsbuildinfo
+node_modules
+.env
+.env.local
+.env*.local
+.npm-cache
+.data
+
+# Local JSON file-store data — may contain real customer, deal, and
+# compensation records. Keep out of version control.
+/data/*.json
+# One-off recovery/import artifacts — these carry real customer + comp records
+# and must never be committed (SOC 2 audit 2026-07-18, finding H-1).
+/recovery-*/
+work_import_*.mjs
+*-deals*.json
+snapshot-*.json
+readback-*.json
+.DS_Store
+.vercel-xdg
+.vercel-home
+.vercel
+scripts/build-deals-*.mjs

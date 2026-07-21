@@ -1,0 +1,13 @@
+<svg width="330" height="130" viewBox="0 20 330 130" fill="none" xmlns="http://www.w3.org/2000/svg" role="img" aria-labelledby="eilaLogoTitle eilaLogoDesc">
+  <title id="eilaLogoTitle">EILA Logo</title>
+  <desc id="eilaLogoDesc">EILA wordmark with a blue E icon and AI Sales Coach tagline.</desc>
+  <rect x="20" y="36" width="88" height="88" rx="20" fill="#F1F5FF"/>
+  <rect x="47" y="58" width="13" height="44" rx="2" fill="#3567D6"/>
+  <rect x="47" y="58" width="42" height="13" rx="2" fill="#3567D6"/>
+  <rect x="47" y="76" width="34" height="13" rx="2" fill="#3567D6"/>
+  <rect x="47" y="94" width="42" height="13" rx="2" fill="#3567D6"/>
+  <text x="142" y="90" dominant-baseline="middle" font-family="Inter, Avenir Next, Avenir, Arial, sans-serif" font-size="57" font-weight="900" letter-spacing="3.5">
+    <tspan fill="#3567D6">E</tspan><tspan fill="#111827">ILA</tspan>
+  </text>
+  <text x="146" y="124" font-family="Inter, Avenir Next, Avenir, Arial, sans-serif" font-size="13" font-weight="800" letter-spacing="3.3" fill="#111827">AI SALES COACH</text>
+</svg>

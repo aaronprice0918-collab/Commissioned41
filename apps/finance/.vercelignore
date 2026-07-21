@@ -1,0 +1,6 @@
+.env*
+.claude
+.git
+node_modules
+.next
+scratchpad
