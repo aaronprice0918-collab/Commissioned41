@@ -11,6 +11,7 @@ import type {
   DailyBudgetInfo,
   LedgerRow,
   MoneyConfig,
+  LinkedAccount,
   MerchantRule,
   MonthBill,
   MonthCheck,
@@ -1080,6 +1081,35 @@ export function applyBankSync(cfg: MoneyConfig, sync: BankSyncPayload, nowISO: s
   const bankSpend = everydaySpendFromBank(sync.transactions, next.bills, nowISO, holderName, cfg.merchantRules);
   next.spend = [...manualSpend, ...bankSpend];
   return next;
+}
+
+// ---- Multi-account (every bank in one picture) ----
+
+const sumBy = (accts: LinkedAccount[], type: LinkedAccount["type"]) =>
+  Math.round(accts.filter((a) => a.type === type).reduce((s, a) => s + (Number.isFinite(a.balance) ? a.balance : 0), 0) * 100) / 100;
+
+/** Set the full list of accounts and DERIVE the aggregate balances, so the whole
+ * engine (safe-to-spend, cash flow, daily budget) runs on the real total across
+ * every bank instead of one connected account. Checking = sum of checking;
+ * savings = sum of savings; credit/loan are the debt side (not spendable). */
+export function setLinkedAccounts(cfg: MoneyConfig, accounts: LinkedAccount[], nowISO: string): MoneyConfig {
+  const next: MoneyConfig = { ...cfg, linkedAccounts: accounts };
+  if (accounts.some((a) => a.type === "checking")) next.checkingBalance = sumBy(accounts, "checking");
+  if (accounts.some((a) => a.type === "savings")) next.savingsBalance = sumBy(accounts, "savings");
+  next.balanceAsOf = nowISO.slice(0, 10);
+  return next;
+}
+
+/** The whole-life account rollup for display: totals per bucket + the list. */
+export function accountsSummary(cfg: MoneyConfig): {
+  checking: number; savings: number; liquid: number; debt: number;
+  accounts: LinkedAccount[];
+} {
+  const accts = cfg.linkedAccounts ?? [];
+  const checking = sumBy(accts, "checking");
+  const savings = sumBy(accts, "savings");
+  const debt = Math.round((sumBy(accts, "credit") + sumBy(accts, "loan")) * 100) / 100;
+  return { checking, savings, liquid: Math.round((checking + savings) * 100) / 100, debt, accounts: accts };
 }
 
 // The merchant key used for a learned rule — same normalization the matcher
