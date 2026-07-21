@@ -16,6 +16,7 @@ One repo, every product.
 | Package | Directory | Description |
 |---------|-----------|-------------|
 | `@commissioned41/ila-core` | `packages/ila-core` | EILA's identity, personality, and shared brain — one source of truth across all products |
+| `@commissioned41/rate-limit` | `packages/rate-limit` | Shared rate limiter (Upstash Redis + in-memory fallback) |
 | `@commissioned41/tsconfig` | `packages/tsconfig` | Shared TypeScript configuration |
 
 ## Getting Started
