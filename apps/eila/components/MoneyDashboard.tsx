@@ -415,7 +415,7 @@ export function MoneyDashboard() {
                 Bills
               </SectionTitle>
               {scanMsg && <p className="mb-2 text-[12px] text-warn">{scanMsg}</p>}
-              <MonthBillList items={mBills.filter((b) => !b.bill.isDebt)} empty="No dated bills this month. Add them in Edit and they land here." />
+              <MonthBillList items={mBills.filter((b) => !b.bill.isDebt)} empty="No dated bills this month. Add them in Edit and they land here." onReclassify={(merchant, kind) => updateMoney(setMerchantRule(cfg, merchant, kind, undefined, todayIso()))} />
             </div>
           </section>
 
@@ -464,7 +464,7 @@ export function MoneyDashboard() {
 
             <div className="glass rise p-4" style={{ animationDelay: "440ms" }}>
               <SectionTitle>Debt</SectionTitle>
-              <MonthBillList items={mBills.filter((b) => b.bill.isDebt)} empty='Mark a bill as "debt" in Edit (truck note, cards) and payments track here.' />
+              <MonthBillList items={mBills.filter((b) => b.bill.isDebt)} empty='Mark a bill as "debt" in Edit (truck note, cards) and payments track here.' onReclassify={(merchant, kind) => updateMoney(setMerchantRule(cfg, merchant, kind, undefined, todayIso()))} />
             </div>
 
             <div className="glass rise p-4" style={{ animationDelay: "480ms" }}>
@@ -538,7 +538,7 @@ export function MoneyDashboard() {
         onClose={() => setHistoryOpen(false)}
         cfg={cfg}
         onRemove={(id) => updateMoney(removeSpend(cfg, id))}
-        onReclassify={(merchant, kind, category) => updateMoney(setMerchantRule(cfg, merchant, kind, category, todayIso()))}
+        onReclassify={(merchant, kind, category, opts) => updateMoney(setMerchantRule(cfg, merchant, kind, category, todayIso(), opts))}
       />
       <LogSpendSheet
         open={logOpen}
@@ -862,27 +862,47 @@ function AllocationTracker({ rows, bills }: { rows: LedgerRow[]; bills: MonthBil
 
 /** BILLS / DEBT panel body — the month's instances, paid ✓ or coming, with a
  * paid-so-far progress footer. */
-function MonthBillList({ items, empty }: { items: MonthBill[]; empty: string }) {
+function MonthBillList({ items, empty, onReclassify }: { items: MonthBill[]; empty: string; onReclassify?: (merchant: string, kind: MerchantRule["kind"]) => void }) {
+  const [openId, setOpenId] = useState<string | null>(null);
   if (!items.length) return <p className="text-[12px] text-fg/55">{empty}</p>;
   const total = items.reduce((s, i) => s + i.bill.amount, 0);
   const landed = items.filter((i) => i.landed).reduce((s, i) => s + i.bill.amount, 0);
+  const teach = (merchant: string, kind: MerchantRule["kind"]) => { onReclassify?.(merchant, kind); setOpenId(null); };
   return (
     <div>
       <div className="divide-y divide-fg/6">
-        {items.map((i) => (
-          <div key={`${i.bill.id}-${i.date}`} className="flex items-center justify-between py-2 text-[13px]">
-            <span className="min-w-0">
-              <span className="block truncate font-semibold">{i.bill.name}</span>
-              <span className="block text-[10px] text-fg/50">
-                the {Number(i.date.slice(8))}{ordinal(Number(i.date.slice(8)))}{i.bill.isSubscription ? " · subscription" : ""}{i.bill.isSavings ? " · 💰 pay yourself" : ""}
-              </span>
-            </span>
-            <span className="flex shrink-0 items-baseline gap-2">
-              <span className="tabnum font-semibold">{money(i.bill.amount)}</span>
-              <span className={`text-[11px] font-semibold ${i.landed ? "text-good" : "text-fg/45"}`}>{i.landed ? "paid" : "coming"}</span>
-            </span>
-          </div>
-        ))}
+        {items.map((i) => {
+          // Only auto-detected bills are "guesses" the member can correct; a
+          // bill they typed in is theirs (edit it in Setup).
+          const canTeach = !!onReclassify && !!i.bill.autoDetected;
+          const open = openId === i.bill.id;
+          return (
+            <div key={`${i.bill.id}-${i.date}`}>
+              <div className="flex items-center justify-between py-2 text-[13px]">
+                <button className="min-w-0 text-left disabled:cursor-default" disabled={!canTeach} onClick={() => setOpenId(open ? null : i.bill.id)} aria-label={canTeach ? `Fix what "${i.bill.name}" is` : undefined}>
+                  <span className="block truncate font-semibold">{i.bill.name}</span>
+                  <span className="block text-[10px] text-fg/50">
+                    the {Number(i.date.slice(8))}{ordinal(Number(i.date.slice(8)))}{i.bill.isSubscription ? " · subscription" : ""}{i.bill.isSavings ? " · 💰 pay yourself" : ""}{canTeach ? " · tap to fix" : ""}
+                  </span>
+                </button>
+                <span className="flex shrink-0 items-baseline gap-2">
+                  <span className="tabnum font-semibold">{money(i.bill.amount)}</span>
+                  <span className={`text-[11px] font-semibold ${i.landed ? "text-good" : "text-fg/45"}`}>{i.landed ? "paid" : "coming"}</span>
+                </span>
+              </div>
+              {open && canTeach && (
+                <div className="grid gap-2 pb-3">
+                  <p className="text-[12px] font-semibold text-fg/70">Is this right?</p>
+                  {!i.bill.isDebt && <button className="btn btn-ghost justify-start py-2 text-[13px]" onClick={() => teach(i.bill.name, "debt")}>💳 It&apos;s debt / a loan payment</button>}
+                  {i.bill.isDebt && <button className="btn btn-ghost justify-start py-2 text-[13px]" onClick={() => teach(i.bill.name, "bill")}>🧾 It&apos;s a regular bill, not debt</button>}
+                  <button className="btn btn-ghost justify-start py-2 text-[13px]" onClick={() => teach(i.bill.name, "everyday")}>🛒 Not a bill — it&apos;s everyday spending</button>
+                  <button className="btn btn-ghost justify-start py-2 text-[13px]" onClick={() => teach(i.bill.name, "ignore")}>🔄 Not a bill — ignore it (a transfer)</button>
+                  <p className="text-[11px] text-fg/45">I&apos;ll remember {i.bill.name} for next time too.</p>
+                </div>
+              )}
+            </div>
+          );
+        })}
       </div>
       <div className="mt-2 border-t border-fg/6 pt-2">
         <div className="flex items-center justify-between text-[13px] font-bold">
@@ -1047,7 +1067,7 @@ export function SpendLogSheet({
 }: {
   open: boolean; onClose: () => void; cfg: MoneyConfig;
   onRemove: (id: string) => void;
-  onReclassify: (merchant: string, kind: MerchantRule["kind"] | "remove", category?: string) => void;
+  onReclassify: (merchant: string, kind: MerchantRule["kind"] | "remove", category?: string, opts?: { amount?: number; date?: string }) => void;
 }) {
   const entries = [...(cfg.spend ?? [])].sort((a, b) => b.date.localeCompare(a.date));
   const [openId, setOpenId] = useState<string | null>(null);
@@ -1055,8 +1075,10 @@ export function SpendLogSheet({
   const ruleKeys = new Set((cfg.merchantRules ?? []).map((r) => merchantKeyFor(r.key)));
   const isLearned = (merchant?: string) => !!merchant && ruleKeys.has(merchantKeyFor(merchant));
 
-  const choose = (merchant: string, kind: MerchantRule["kind"] | "remove", category?: string) => {
-    onReclassify(merchant, kind, category);
+  const choose = (e: (typeof entries)[number], kind: MerchantRule["kind"] | "remove", category?: string) => {
+    // Pass the charge's amount/date so "it's a bill/debt" can create a tracked
+    // bill (otherwise the money would just vanish from the picture).
+    onReclassify(e.note || e.category, kind, category, { amount: e.amount, date: e.date });
     setOpenId(null);
     setPickCatFor(null);
   };
@@ -1108,7 +1130,7 @@ export function SpendLogSheet({
                         <p className="mb-2 text-[12px] font-semibold text-fg/70">What kind of everyday spending?</p>
                         <div className="flex flex-wrap gap-2">
                           {SPEND_CATEGORIES.map((c) => (
-                            <button key={c} className="btn btn-ghost px-3 py-1.5 text-[13px]" onClick={() => choose(merchant, "everyday", c)}>{c}</button>
+                            <button key={c} className="btn btn-ghost px-3 py-1.5 text-[13px]" onClick={() => choose(e, "everyday", c)}>{c}</button>
                           ))}
                         </div>
                       </>
@@ -1117,11 +1139,11 @@ export function SpendLogSheet({
                         <p className="mb-2 text-[12px] font-semibold text-fg/70">What is this, really?</p>
                         <div className="grid grid-cols-1 gap-2">
                           <button className="btn btn-ghost justify-start py-2 text-[13px]" onClick={() => setPickCatFor(e.id)}>🛒 Everyday spending</button>
-                          <button className="btn btn-ghost justify-start py-2 text-[13px]" onClick={() => choose(merchant, "bill")}>🧾 A bill</button>
-                          <button className="btn btn-ghost justify-start py-2 text-[13px]" onClick={() => choose(merchant, "debt")}>💳 Debt or loan payment</button>
-                          <button className="btn btn-ghost justify-start py-2 text-[13px]" onClick={() => choose(merchant, "ignore")}>🔄 Not spending — I just moved my money</button>
+                          <button className="btn btn-ghost justify-start py-2 text-[13px]" onClick={() => choose(e, "bill")}>🧾 A bill</button>
+                          <button className="btn btn-ghost justify-start py-2 text-[13px]" onClick={() => choose(e, "debt")}>💳 Debt or loan payment</button>
+                          <button className="btn btn-ghost justify-start py-2 text-[13px]" onClick={() => choose(e, "ignore")}>🔄 Not spending — I just moved my money</button>
                           {isLearned(merchant) && (
-                            <button className="btn btn-ghost justify-start py-2 text-[13px] text-fg/55" onClick={() => choose(merchant, "remove")}>↩︎ Back to automatic</button>
+                            <button className="btn btn-ghost justify-start py-2 text-[13px] text-fg/55" onClick={() => choose(e, "remove")}>↩︎ Back to automatic</button>
                           )}
                         </div>
                         <p className="mt-2 text-[11px] text-fg/45">I&apos;ll remember {merchant} and fix every past and future charge.</p>

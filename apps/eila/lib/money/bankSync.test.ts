@@ -274,4 +274,28 @@ describe("merchant rules — the always-learning layer", () => {
     expect(bankSpend(cfg)).toHaveLength(1);
     expect(cfg.merchantRules ?? []).toHaveLength(0);
   });
+
+  it("same brain reaches BILLS: 'not a bill' drops it and moves it to everyday", () => {
+    // Two months of the same charge → auto-detected as a bill (not everyday).
+    let cfg = applyBankSync(defaultMoneyConfig(), { ...SYNC, transactions: [
+      { date: "2026-06-05", name: "Zeta Holdings", amount: -1200 },
+      { date: "2026-07-05", name: "Zeta Holdings", amount: -1200 },
+    ] }, NOW);
+    expect(cfg.bills.some((b) => /Zeta/i.test(b.name))).toBe(true);
+    expect(bankSpend(cfg).some((e) => /Zeta/i.test(e.note ?? ""))).toBe(false);
+    // Member: "that's not a bill, it's everyday."
+    cfg = setMerchantRule(cfg, "Zeta Holdings", "everyday", "Other", NOW);
+    expect(cfg.bills.some((b) => /Zeta/i.test(b.name))).toBe(false); // gone from bills
+    expect(bankSpend(cfg).some((e) => /Zeta/i.test(e.note ?? ""))).toBe(true); // now counted as spend
+  });
+
+  it("'it's a bill' from a charge creates a tracked bill so money-out still counts it", () => {
+    let cfg = syncWith([{ date: "2026-07-01", name: "Zeta Holdings", amount: -300 }]);
+    expect(bankSpend(cfg)).toHaveLength(1); // single month → defaults to everyday
+    expect(cfg.bills.some((b) => /Zeta/i.test(b.name))).toBe(false);
+    cfg = setMerchantRule(cfg, "Zeta Holdings", "debt", undefined, NOW, { amount: 300, date: "2026-07-01" });
+    expect(bankSpend(cfg)).toHaveLength(0); // out of everyday
+    const bill = cfg.bills.find((b) => /Zeta/i.test(b.name));
+    expect(bill).toMatchObject({ amount: 300, dayOfMonth: 1, isDebt: true }); // tracked as debt instead
+  });
 });
