@@ -74,7 +74,8 @@ async function appendToFile(p: ContactPayload) {
 }
 
 export async function POST(req: Request) {
-  if (!rateLimit(clientIp(req), 5, 10 * 60 * 1000)) {
+  const rl = await rateLimit(clientIp(req), { limit: 5, windowSec: 600 });
+  if (!rl.ok) {
     return NextResponse.json(
       { ok: false, error: "Too many requests, try again later." },
       { status: 429 },
