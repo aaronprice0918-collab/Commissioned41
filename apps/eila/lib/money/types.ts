@@ -120,10 +120,33 @@ export interface MoneyConfig {
   /** The account holder's name (from their profile at sync time) — lets a
    * re-classify recompute still catch Zelle/transfers to themselves. */
   accountHolder?: string;
+  /** Every account across every bank the member has — the multi-account
+   * picture. When present, checkingBalance/savingsBalance are DERIVED as the
+   * sum of the checking/savings accounts here (so the whole engine runs on the
+   * real total, not one connected account). Credit/loan balances are the debt
+   * side, shown separately. */
+  linkedAccounts?: LinkedAccount[];
   /** What the member (or EILA) taught the app about a merchant — applied to
    * every past AND future transaction from it, so a correction only happens
    * once. This is the "always learning" layer. */
   merchantRules?: MerchantRule[];
+}
+
+/** One account at one bank — checking, savings, a card, or a loan. */
+export interface LinkedAccount {
+  id: string;
+  /** Bank/credit-union name, e.g. "LGE Credit Union". */
+  institution: string;
+  /** Account nickname, e.g. "High Rewards Checking". */
+  name: string;
+  /** Last 4, for display. */
+  mask?: string;
+  type: "checking" | "savings" | "credit" | "loan" | "other";
+  /** Dollars. For checking/savings: what you have. For credit/loan: what you
+   * OWE (stored positive; it's the debt side). */
+  balance: number;
+  /** ISO date the balance was last confirmed. */
+  updatedAt?: string;
 }
 
 /** A learned correction for one merchant: "these charges are actually X."

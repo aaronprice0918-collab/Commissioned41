@@ -29,12 +29,14 @@ import {
   monthBills,
   monthChecks,
   merchantKeyFor,
+  accountsSummary,
+  setLinkedAccounts,
   safeToSpend,
   seedBudgetsFromProfile,
   setMerchantRule,
   type StatementScan,
 } from "@/lib/money/engine";
-import type { Bill, BillCadence, BudgetMonth, LedgerRow, MerchantRule, MoneyConfig, MoneyGoal, MonthBill } from "@/lib/money/types";
+import type { Bill, BillCadence, BudgetMonth, LedgerRow, LinkedAccount, MerchantRule, MoneyConfig, MoneyGoal, MonthBill } from "@/lib/money/types";
 import { defaultMoneyConfig } from "@/lib/money/types";
 import { changedFields, mergeListBy } from "@/lib/mergeEdits";
 import { CountUp } from "@/components/motion";
@@ -176,6 +178,8 @@ export function MoneyDashboard() {
   const mBills = useMemo(() => monthBills(cfg, now), [cfg, now]);
   const [logOpen, setLogOpen] = useState(false);
   const [historyOpen, setHistoryOpen] = useState(false);
+  const [accountsOpen, setAccountsOpen] = useState(false);
+  const acctRollup = useMemo(() => accountsSummary(cfg), [cfg]);
 
   const nextBill = upcoming.length
     ? { name: upcoming[0].bill.name, amount: upcoming[0].bill.amount, daysAway: upcoming[0].daysAway, date: upcoming[0].date }
@@ -419,6 +423,10 @@ export function MoneyDashboard() {
             </div>
           </section>
 
+          {acctRollup.accounts.length > 0 && (
+            <AccountsCard rollup={acctRollup} onEdit={() => setAccountsOpen(true)} onAsk={askIla} />
+          )}
+
           <section className="grid gap-3 md:grid-cols-3">
             <div className="glass rise p-4" style={{ animationDelay: "400ms" }}>
               <SectionTitle
@@ -539,6 +547,12 @@ export function MoneyDashboard() {
         cfg={cfg}
         onRemove={(id) => updateMoney(removeSpend(cfg, id))}
         onReclassify={(merchant, kind, category, opts) => updateMoney(setMerchantRule(cfg, merchant, kind, category, todayIso(), opts))}
+      />
+      <AccountsSheet
+        open={accountsOpen}
+        onClose={() => setAccountsOpen(false)}
+        cfg={cfg}
+        onSave={(accts) => { updateMoney(setLinkedAccounts(cfg, accts, todayIso())); setAccountsOpen(false); }}
       />
       <LogSpendSheet
         open={logOpen}
@@ -1156,6 +1170,85 @@ export function SpendLogSheet({
           })
         )}
         <p className="px-1 pt-1 text-[11px] text-fg/45">Every change recalculates your budget, ledger, and today&apos;s number instantly.</p>
+      </div>
+    </Sheet>
+  );
+}
+
+/** The whole-life account rollup — every bank in one place. Cash on hand is the
+ * REAL total across all checking + savings; debt sums cards + loans. */
+function AccountsCard({ rollup, onEdit, onAsk }: {
+  rollup: ReturnType<typeof accountsSummary>; onEdit: () => void; onAsk: (q: string) => void;
+}) {
+  const groups: [string, LinkedAccount["type"]][] = [["Checking", "checking"], ["Savings", "savings"], ["Credit cards", "credit"], ["Loans", "loan"], ["Other", "other"]];
+  return (
+    <section className="glass rise p-4">
+      <SectionTitle action={<button className="text-[13px] font-semibold text-accent" onClick={onEdit}>Manage</button>}>Your accounts</SectionTitle>
+      <div className="mb-3 grid grid-cols-2 gap-3">
+        <button className="glass p-3 text-left active:scale-[0.99]" onClick={() => onAsk("Walk me through my whole cash position across all my accounts and banks — what's real spendable money?")}>
+          <div className="text-[11px] text-fg/55">Cash on hand · all banks</div>
+          <div className="font-display text-[20px] font-bold tabnum">{money(rollup.liquid)}</div>
+        </button>
+        <button className="glass p-3 text-left active:scale-[0.99]" onClick={() => onAsk("Break down my total debt across every account and give me the fastest realistic payoff order.")}>
+          <div className="text-[11px] text-fg/55">Total debt</div>
+          <div className="font-display text-[20px] font-bold tabnum" style={{ color: "#c0392b" }}>{money(rollup.debt)}</div>
+        </button>
+      </div>
+      <div className="space-y-2">
+        {groups.map(([label, type]) => {
+          const list = rollup.accounts.filter((a) => a.type === type);
+          if (!list.length) return null;
+          const isDebt = type === "credit" || type === "loan";
+          return (
+            <div key={type}>
+              <div className="text-[10px] font-semibold uppercase tracking-wide text-fg/40">{label}</div>
+              {list.map((a) => (
+                <div key={a.id} className="flex items-center justify-between py-1 text-[13px]">
+                  <span className="min-w-0 truncate"><span className="font-semibold">{a.name}</span><span className="text-fg/45"> · {a.institution}{a.mask ? ` ····${a.mask}` : ""}</span></span>
+                  <span className="tabnum font-semibold" style={isDebt ? { color: "#c0392b" } : undefined}>{isDebt ? "-" : ""}{money(a.balance)}</span>
+                </div>
+              ))}
+            </div>
+          );
+        })}
+      </div>
+    </section>
+  );
+}
+
+/** Add/edit every account across every bank. Checking + savings roll up into the
+ * real spendable total the whole engine runs on; cards/loans track debt. */
+function AccountsSheet({ open, onClose, cfg, onSave }: {
+  open: boolean; onClose: () => void; cfg: MoneyConfig; onSave: (accounts: LinkedAccount[]) => void;
+}) {
+  const [rows, setRows] = useState<LinkedAccount[]>(cfg.linkedAccounts ?? []);
+  useEffect(() => { if (open) setRows(cfg.linkedAccounts ?? []); }, [open, cfg.linkedAccounts]);
+  const upd = (i: number, patch: Partial<LinkedAccount>) => setRows((rs) => rs.map((r, j) => (j === i ? { ...r, ...patch } : r)));
+  const add = () => setRows((rs) => [...rs, { id: uid(), institution: "", name: "", type: "checking", balance: 0 }]);
+  const del = (i: number) => setRows((rs) => rs.filter((_, j) => j !== i));
+  const types: LinkedAccount["type"][] = ["checking", "savings", "credit", "loan", "other"];
+  return (
+    <Sheet open={open} onClose={onClose} title="Your accounts">
+      <div className="space-y-3 pb-2">
+        <p className="text-[12px] text-fg/55">Add every account across every bank. Checking + savings become your real spendable total; cards &amp; loans track your debt. For a card or loan, enter what you <span className="font-semibold">owe</span>.</p>
+        {rows.map((r, i) => (
+          <div key={r.id} className="glass space-y-2 p-3" style={{ borderRadius: 14 }}>
+            <div className="flex items-center gap-2">
+              <input className="field flex-1" placeholder="Bank (LGE, Bank of America…)" value={r.institution} onChange={(e) => upd(i, { institution: e.target.value })} />
+              <button className="grid h-8 w-8 shrink-0 place-items-center rounded-full bg-fg/6 text-fg/55 active:scale-95" onClick={() => del(i)} aria-label="Remove account"><X size={14} /></button>
+            </div>
+            <input className="field w-full" placeholder="Account name (High Rewards Checking…)" value={r.name} onChange={(e) => upd(i, { name: e.target.value })} />
+            <div className="flex gap-2">
+              <input className="field w-16" placeholder="1234" value={r.mask ?? ""} onChange={(e) => upd(i, { mask: e.target.value })} />
+              <select className="field flex-1" value={r.type} onChange={(e) => upd(i, { type: e.target.value as LinkedAccount["type"] })}>
+                {types.map((t) => <option key={t} value={t}>{t}</option>)}
+              </select>
+              <input className="field w-28" inputMode="decimal" placeholder="$" value={r.balance || ""} onChange={(e) => upd(i, { balance: Math.abs(parseNumericInput(e.target.value)) })} />
+            </div>
+          </div>
+        ))}
+        <button className="btn btn-ghost btn-block" onClick={add}>+ Add an account</button>
+        <button className="btn btn-primary btn-block" onClick={() => onSave(rows.filter((r) => r.name.trim() || r.institution.trim()))}>Save accounts</button>
       </div>
     </Sheet>
   );
