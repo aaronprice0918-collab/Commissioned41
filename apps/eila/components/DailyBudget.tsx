@@ -191,7 +191,7 @@ export function DailyBudget() {
         onClose={() => setHistoryOpen(false)}
         cfg={cfg}
         onRemove={(id) => updateMoney(removeSpend(cfg, id))}
-        onReclassify={(merchant, kind, category) => updateMoney(setMerchantRule(cfg, merchant, kind, category, todayIso()))}
+        onReclassify={(merchant, kind, category, opts) => updateMoney(setMerchantRule(cfg, merchant, kind, category, todayIso(), opts))}
       />
       <LogSpendSheet
         open={logOpen}

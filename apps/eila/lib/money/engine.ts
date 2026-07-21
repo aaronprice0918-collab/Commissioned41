@@ -1063,7 +1063,13 @@ export function applyBankSync(cfg: MoneyConfig, sync: BankSyncPayload, nowISO: s
     accounts: sync.accounts,
   };
   next.bankTransactions = sync.transactions.slice(0, 200);
-  next.bills = addMissingBankBills(cfg.bills, detectRecurringBankBills(sync.transactions));
+  // Merchant rules are the ONE brain: don't auto-detect a bill the member said
+  // isn't one, and honor "this is debt" on the ones we do keep.
+  const detected = detectRecurringBankBills(sync.transactions).filter((b) => {
+    const r = matchMerchantRule(b.name, cfg.merchantRules);
+    return !(r && (r.kind === "everyday" || r.kind === "ignore"));
+  });
+  next.bills = applyRulesToBills(addMissingBankBills(cfg.bills, detected), cfg.merchantRules);
   // Everyday spend from the feed. Without this, variable purchases (gas,
   // groceries, dining, shopping) hit the balance but never "money out", so the
   // budget shows $0 spent while the account is actually empty. Bills/debt are
@@ -1082,6 +1088,27 @@ export function merchantKeyFor(name: string): string {
   return bankBillCompact(bankBillKey(name));
 }
 
+// Apply merchant rules to a bill set — the same brain that governs everyday
+// spend also governs bills: drop an AUTO-detected bill the member reclassified
+// as everyday/ignore (a hand-added bill is theirs to keep), and mark a
+// rule-flagged debt as debt.
+function applyRulesToBills(bills: Bill[], rules?: MerchantRule[]): Bill[] {
+  if (!rules?.length) return bills;
+  const out: Bill[] = [];
+  for (const b of bills) {
+    const rule = matchMerchantRule(b.name, rules);
+    if (rule && (rule.kind === "everyday" || rule.kind === "ignore")) {
+      if (b.autoDetected) continue; // member said it's not a bill
+      out.push(b);
+    } else if (rule && rule.kind === "debt") {
+      out.push({ ...b, isDebt: true });
+    } else {
+      out.push(b);
+    }
+  }
+  return out;
+}
+
 /**
  * Teach the app what a merchant's charges really are — the "always learning"
  * write path. Upserts one rule (keyed by merchant) and INSTANTLY re-derives the
@@ -1095,6 +1122,7 @@ export function setMerchantRule(
   kind: MerchantRule["kind"] | "remove",
   category: string | undefined,
   nowISO: string,
+  opts?: { amount?: number; date?: string },
 ): MoneyConfig {
   const key = merchantKeyFor(merchantName);
   if (key.length < 3) return cfg;
@@ -1103,7 +1131,35 @@ export function setMerchantRule(
     kind === "remove"
       ? others
       : [...others, { key, label: bankBillDisplayName(merchantName), kind, category: kind === "everyday" ? category : undefined }];
-  const withRule: MoneyConfig = { ...cfg, merchantRules };
+
+  // Keep the bills list in lockstep with the rule (the ONE brain).
+  const matches = (b: Bill) => merchantKeyFor(b.name) === key || sameBankBillName(b.name, merchantName);
+  let bills = cfg.bills;
+  if (kind === "everyday" || kind === "ignore") {
+    // Not a bill — drop any auto-detected bill so it stops showing there. (The
+    // recompute below then counts it as everyday, or ignores it entirely.)
+    bills = bills.filter((b) => !(b.autoDetected && matches(b)));
+  } else if (kind === "bill" || kind === "debt") {
+    if (bills.some(matches)) {
+      // Already tracked — just make sure the debt flag matches.
+      bills = bills.map((b) => (matches(b) ? { ...b, isDebt: kind === "debt" ? true : b.isDebt } : b));
+    } else if (opts?.amount && opts.amount > 0) {
+      // Reclassified from a real charge — create the bill so "money out" still
+      // counts it (as a bill/debt), instead of it vanishing from the picture.
+      const day = opts.date && /^\d{4}-\d{2}-\d{2}$/.test(opts.date) ? Math.min(31, Math.max(1, Number(opts.date.slice(8, 10)))) : 1;
+      bills = [...bills, {
+        id: `rule-bill-${key.slice(0, 48)}`,
+        name: bankBillDisplayName(merchantName),
+        amount: Math.round(Math.abs(opts.amount) * 100) / 100,
+        cadence: "monthly",
+        dayOfMonth: day,
+        isDebt: kind === "debt" ? true : undefined,
+        autoDetected: true,
+      }];
+    }
+  }
+
+  const withRule: MoneyConfig = { ...cfg, merchantRules, bills };
   return recomputeBankSpend(withRule, nowISO);
 }
 
