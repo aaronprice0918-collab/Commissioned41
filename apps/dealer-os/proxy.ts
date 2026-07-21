@@ -10,6 +10,30 @@ const MARKETING_HOSTS = new Set(["commissioned41.com", "www.commissioned41.com"]
 const APP_HOST = "missionos.commissioned41.com";
 const HQ_HOST = "hq.commissioned41.com"; // Commissioned 41 owner/company core portal
 
+// ── Auth safety net (SOC 2 CC6.1 defense-in-depth) ──────────────────────────
+// Every API route already implements its own auth check; this is the catch-all
+// so a route added later without one gets blocked here instead of left open. It
+// only checks for the PRESENCE of a credential — the route still validates and
+// authorizes. PUBLIC_API_ROUTES are intentionally unauthenticated (webhooks are
+// signature-verified, public forms, capability-token links); cron routes carry
+// their own CRON_SECRET bearer check.
+const PUBLIC_API_ROUTES = new Set([
+  "/api/stripe/webhook",
+  "/api/sms/webhook",
+  "/api/waitlist",
+  "/api/checkout",
+  "/api/your-deal",
+  "/api/signup",
+]);
+const CRON_PREFIX = "/api/cron/";
+
+function apiNeedsCredential(pathname: string) {
+  if (!pathname.startsWith("/api/")) return false;
+  if (PUBLIC_API_ROUTES.has(pathname)) return false;
+  if (pathname.startsWith(CRON_PREFIX)) return false;
+  return true;
+}
+
 function apexServesDirectly(pathname: string) {
   return (
     pathname === "/welcome" ||
@@ -27,6 +51,12 @@ function apexServesDirectly(pathname: string) {
 export function proxy(req: NextRequest) {
   const host = (req.headers.get("host") || "").split(":")[0].toLowerCase();
   const { pathname } = req.nextUrl;
+
+  // Auth safety net first — applies to API routes on any host. A non-public API
+  // route with no Authorization header is rejected before it can run.
+  if (apiNeedsCredential(pathname) && !req.headers.get("authorization")) {
+    return NextResponse.json({ error: "Authentication required." }, { status: 401 });
+  }
 
   // Commissioned 41 core portal: landing on hq.* sends the owner to the company
   // command center (Commissioned 41 HQ). Same account/login as the product app;
