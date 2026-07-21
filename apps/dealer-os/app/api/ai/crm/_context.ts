@@ -38,6 +38,8 @@ import { isOpenLead, scoreLead, isAtRisk } from "@/lib/leadScore";
 import { personLabel } from "@/lib/desk";
 import { speedClock, speedStats } from "@/lib/speedToLead";
 import { consentStatus, consentSummary, suppressionDeadline } from "@/lib/consent";
+import { textNudges } from "@/lib/textIntelligence";
+import { cadenceSummary } from "@/lib/followUpCadence";
 import { jacketOrderFor, jacketStatus, jacketSummaryLine } from "@/lib/dealJacket";
 import { isLate, laneStats, promiseRisk, promiseStats, recaptureList, type ServiceStatus } from "@/lib/service";
 import { SOP_AGING_DAYS, counterStats, normalizePartsData, sopAgeDays, stockSuggestions, type SopStatus } from "@/lib/parts";
@@ -132,7 +134,7 @@ LEAD:
 export async function loadStoreData(orgId: string): Promise<EILAData> {
   const supabase = getSupabaseServerClient();
   if (!supabase) return {};
-  const { data } = await supabase.from("app_store").select("key,value").eq("org_id", orgId).in("key", ["deals", "team", "goals", "crmLeads", "repProfiles", "monthlySetup", "customerMemory", "storeMemory", "mistakeMemory", "compPlans", "payplans", "serviceLane", "partsCounter", "closedMonths"]);
+  const { data } = await supabase.from("app_store").select("key,value").eq("org_id", orgId).in("key", ["deals", "team", "goals", "crmLeads", "repProfiles", "monthlySetup", "customerMemory", "storeMemory", "mistakeMemory", "compPlans", "payplans", "serviceLane", "partsCounter", "closedMonths", "scheduledTexts"]);
   return Object.fromEntries((data || []).map((r: any) => [r.key, r.value]));
 }
 
@@ -329,6 +331,28 @@ export function buildSnapshot(map: EILAData, settings: StoreSettings, viewer: Vi
       if (c.context?.length) parts.push(`context: ${c.context.join("; ")}`);
       if (c.notes?.length) parts.push(`notes: ${c.notes.join(" | ")}`);
       L.push(`    ${c.name || k} — ${parts.join(" || ") || "no detail yet"}`);
+    }
+  }
+
+  // TEXT NUDGES — proactive alerts about unanswered customer texts and hot
+  // inbound replies. EILA surfaces these unprompted when coaching or when
+  // the user asks "what should I do" / "who needs attention".
+  const nudges = textNudges(leads);
+  if (nudges.length) {
+    L.push("");
+    L.push("⚠ TEXT NUDGES — customers waiting for a reply (proactively flag these):");
+    for (const n of nudges.slice(0, 10)) {
+      L.push(`  [${n.urgency.toUpperCase()}] ${n.customer} (${n.salesperson}): ${n.reason}`);
+    }
+  }
+
+  // ACTIVE CADENCES — leads with automated follow-up sequences running
+  const activeCadences = leads.filter((l) => l.cadence?.status === "active");
+  if (activeCadences.length) {
+    L.push("");
+    L.push(`ACTIVE CADENCES (${activeCadences.length}):`);
+    for (const l of activeCadences.slice(0, 10)) {
+      L.push(`  ${l.customer || "?"} · ${l.salesperson || "—"} · ${cadenceSummary(l.cadence)}`);
     }
   }
 

@@ -2,6 +2,7 @@ import type { EILAContext } from "./_context";
 import { scopeLeads } from "./_context";
 import { getSupabaseServerClient } from "@/lib/supabaseServer";
 import { currency, samePerson } from "@/lib/data";
+import { isOwnerEmail } from "@/lib/access";
 import { guardedMutate } from "@/lib/storeServer";
 import { isLate, laneStats, promiseRisk, promiseStats, recaptureList, updateDue, type ServiceStatus } from "@/lib/service";
 import { SOP_AGING_DAYS, counterStats, normalizePartsData, sopAgeDays, stockSuggestions, type SopStatus } from "@/lib/parts";
@@ -9,9 +10,12 @@ import { buildFixedOpsDigest } from "@/lib/fixedOpsDigest";
 import { groupForViewer, groupRollup, type GroupStoreInput } from "@/lib/groupReport";
 import { sendTextToLead } from "@/lib/smsServer";
 import { twilioConfigured } from "@/lib/twilio";
-import { withOptOutNotice } from "@/lib/comms";
+import { withOptOutNotice, textRevokedAnywhere } from "@/lib/comms";
 import { consentStatus, suppressionDeadline } from "@/lib/consent";
 import { isOpenLead, scoreLead } from "@/lib/leadScore";
+import { makeScheduledTextId, scheduledLine, cancel as cancelScheduled, type ScheduledText } from "@/lib/scheduledTexts";
+import { startCadence, cadenceSteps, cadenceSummary, pauseCadence, CADENCE_TEMPLATES, type CadenceTemplate, type CadenceState } from "@/lib/followUpCadence";
+import { responseMetrics, repTextAnalytics, textNudges, scoreSentiment } from "@/lib/textIntelligence";
 
 
 // group_report — the multi-rooftop rollup (lib/groupReport.ts, same brain as
@@ -172,9 +176,10 @@ export async function handleTextCustomer(input: any, ctx: EILAContext): Promise<
     body: message,
     senderName: ctx.viewer.employeeName || "EILA",
     role: ctx.viewer.role,
+    mediaUrl: input?.imageUrl || undefined,
   });
   if (!result.ok) return `The send failed: ${result.error}`;
-  return `Sent to ${lead.customer}: "${result.message.body}" — it's on their thread.`;
+  return `Sent to ${lead.customer}: "${result.message.body}"${input?.imageUrl ? " + image" : ""} — it's on their thread.`;
 }
 
 // restore_backup — EILA parity for the Import screen's safety net. Destructive
@@ -263,8 +268,452 @@ export const TEXT_CUSTOMER_TOOL = {
       customer: { type: "string", description: "Customer name (or part of one) on the working lead." },
       message: { type: "string", description: "The text to send. Keep it short, human, and signed with the sender's first name." },
       confirm: { type: "boolean", description: "true ONLY after the user explicitly approved the previewed message." },
+      imageUrl: { type: "string", description: "Optional: publicly accessible image URL to attach as MMS (vehicle photo, payment breakdown, etc)." },
     },
     required: ["customer", "message"],
+  },
+};
+
+// ── schedule_text — EILA or a rep sets a text to fire later ────────────────
+export async function handleScheduleText(input: any, ctx: EILAContext): Promise<string> {
+  if (!twilioConfigured()) return "Texting isn't connected for this store yet.";
+  const supabase = getSupabaseServerClient();
+  if (!supabase) return "Secure backend unavailable.";
+
+  const q = String(input?.customer || "").trim().toLowerCase();
+  const message = String(input?.message || "").trim();
+  const when = String(input?.when || "").trim();
+  if (!q || !message || !when) return "I need the customer, the message, and when to send it (e.g. 'tomorrow at 9am').";
+
+  const leads = scopeLeads(Array.isArray(ctx.data.crmLeads) ? ctx.data.crmLeads : [], ctx.viewer) as any[];
+  const hits = leads.filter((l) => String(l.customer || "").toLowerCase().includes(q));
+  if (!hits.length) return `No working lead matches "${input?.customer}".`;
+  if (hits.length > 1) return `Several leads match: ${hits.slice(0, 5).map((l: any) => l.customer).join(", ")}. Which one?`;
+  const lead = hits[0];
+
+  if (consentStatus(lead, "text") !== "granted") {
+    return consentStatus(lead, "text") === "revoked"
+      ? `HARD NO: ${lead.customer} revoked text consent.`
+      : `${lead.customer} has no text consent on file — capture it first.`;
+  }
+
+  // Parse the when — support common natural expressions
+  const scheduledAt = parseScheduleTime(when);
+  if (!scheduledAt) return `I couldn't parse "${when}" as a date/time. Try something like "tomorrow at 9am", "July 25 at 2pm", or an ISO datetime.`;
+  if (new Date(scheduledAt) <= new Date()) return "That time is in the past — give me a future time.";
+
+  const st: ScheduledText = {
+    id: makeScheduledTextId(),
+    leadId: String(lead.id),
+    body: message,
+    scheduledAt,
+    createdAt: new Date().toISOString(),
+    createdBy: ctx.viewer.employeeName || "EILA",
+    status: "pending",
+    mediaUrl: input?.imageUrl || undefined,
+  };
+
+  await guardedMutate<ScheduledText[]>(supabase, ctx.orgId, "scheduledTexts", (current) => {
+    return [...(current ?? []), st];
+  });
+
+  const fireTime = new Date(scheduledAt).toLocaleString("en-US", { month: "short", day: "numeric", hour: "numeric", minute: "2-digit" });
+  return `Scheduled ✔ Text to ${lead.customer} fires ${fireTime}: "${message}"${st.mediaUrl ? " + image" : ""} [id:${st.id}]`;
+}
+
+// Simple schedule-time parser for natural expressions
+function parseScheduleTime(when: string): string | null {
+  const now = new Date();
+  const lower = when.toLowerCase().trim();
+
+  // ISO datetime
+  const iso = new Date(when);
+  if (!isNaN(iso.getTime()) && when.includes("-")) return iso.toISOString();
+
+  // "tomorrow at Xam/pm"
+  const tomorrowMatch = lower.match(/tomorrow\s+(?:at\s+)?(\d{1,2})(?::(\d{2}))?\s*(am|pm)?/i);
+  if (tomorrowMatch) {
+    const d = new Date(now);
+    d.setDate(d.getDate() + 1);
+    let h = parseInt(tomorrowMatch[1]);
+    const m = tomorrowMatch[2] ? parseInt(tomorrowMatch[2]) : 0;
+    const ampm = tomorrowMatch[3]?.toLowerCase();
+    if (ampm === "pm" && h < 12) h += 12;
+    if (ampm === "am" && h === 12) h = 0;
+    d.setHours(h, m, 0, 0);
+    return d.toISOString();
+  }
+
+  // "in X hours/minutes"
+  const inMatch = lower.match(/in\s+(\d+)\s*(hour|hr|minute|min)/i);
+  if (inMatch) {
+    const n = parseInt(inMatch[1]);
+    const unit = inMatch[2].toLowerCase();
+    const ms = unit.startsWith("hour") || unit.startsWith("hr") ? n * 3600000 : n * 60000;
+    return new Date(now.getTime() + ms).toISOString();
+  }
+
+  // "today at Xam/pm"
+  const todayMatch = lower.match(/today\s+(?:at\s+)?(\d{1,2})(?::(\d{2}))?\s*(am|pm)?/i);
+  if (todayMatch) {
+    const d = new Date(now);
+    let h = parseInt(todayMatch[1]);
+    const m = todayMatch[2] ? parseInt(todayMatch[2]) : 0;
+    const ampm = todayMatch[3]?.toLowerCase();
+    if (ampm === "pm" && h < 12) h += 12;
+    if (ampm === "am" && h === 12) h = 0;
+    d.setHours(h, m, 0, 0);
+    return d.toISOString();
+  }
+
+  // Bare "Xam/pm" — assume today if future, else tomorrow
+  const bareTime = lower.match(/^(\d{1,2})(?::(\d{2}))?\s*(am|pm)$/i);
+  if (bareTime) {
+    const d = new Date(now);
+    let h = parseInt(bareTime[1]);
+    const m = bareTime[2] ? parseInt(bareTime[2]) : 0;
+    const ampm = bareTime[3].toLowerCase();
+    if (ampm === "pm" && h < 12) h += 12;
+    if (ampm === "am" && h === 12) h = 0;
+    d.setHours(h, m, 0, 0);
+    if (d <= now) d.setDate(d.getDate() + 1);
+    return d.toISOString();
+  }
+
+  return null;
+}
+
+// ── cancel_scheduled_text — cancel a pending scheduled text ───────────────
+export async function handleCancelScheduledText(input: any, ctx: EILAContext): Promise<string> {
+  const textId = String(input?.textId || "").trim();
+  if (!textId) return "I need the scheduled text ID (e.g. ST-1234567890).";
+
+  const supabase = getSupabaseServerClient();
+  if (!supabase) return "Secure backend unavailable.";
+
+  let found = false;
+  await guardedMutate<ScheduledText[]>(supabase, ctx.orgId, "scheduledTexts", (current) => {
+    return (current ?? []).map((t) => {
+      if (t.id === textId && t.status === "pending") {
+        found = true;
+        return cancelScheduled(t);
+      }
+      return t;
+    });
+  });
+
+  return found ? `Cancelled ✔ Scheduled text ${textId} won't be sent.` : `No pending scheduled text found with ID "${textId}".`;
+}
+
+// ── list_scheduled_texts — show pending scheduled texts ───────────────────
+export function handleListScheduledTexts(_input: any, ctx: EILAContext): string {
+  const texts: ScheduledText[] = Array.isArray((ctx.data as any).scheduledTexts) ? (ctx.data as any).scheduledTexts : [];
+  const leads: any[] = Array.isArray(ctx.data.crmLeads) ? ctx.data.crmLeads : [];
+  const pending = texts.filter((t) => t.status === "pending");
+  if (!pending.length) return "No scheduled texts pending.";
+
+  const out = [`=== ${pending.length} scheduled text(s) pending ===`];
+  for (const t of pending.sort((a, b) => a.scheduledAt.localeCompare(b.scheduledAt))) {
+    const lead = leads.find((l: any) => String(l?.id) === t.leadId);
+    out.push(scheduledLine(t, lead?.customer || "Unknown"));
+  }
+  return out.join("\n");
+}
+
+// ── start_cadence — start a follow-up cadence on a lead ───────────────────
+export async function handleStartCadence(input: any, ctx: EILAContext): Promise<string> {
+  if (!twilioConfigured()) return "Texting isn't connected for this store yet.";
+  const supabase = getSupabaseServerClient();
+  if (!supabase) return "Secure backend unavailable.";
+
+  const q = String(input?.customer || "").trim().toLowerCase();
+  if (!q) return "Which customer? Give me a name.";
+
+  const template = String(input?.template || "new_lead") as CadenceTemplate;
+  const validTemplates = [...Object.keys(CADENCE_TEMPLATES), "custom"] as CadenceTemplate[];
+  if (!validTemplates.includes(template)) {
+    return `Invalid template. Choose one: ${Object.entries(CADENCE_TEMPLATES).map(([k, v]) => `${k} (${v.label})`).join(", ")}, or "custom".`;
+  }
+
+  const leads = scopeLeads(Array.isArray(ctx.data.crmLeads) ? ctx.data.crmLeads : [], ctx.viewer) as any[];
+  const hits = leads.filter((l) => String(l.customer || "").toLowerCase().includes(q));
+  if (!hits.length) return `No working lead matches "${input?.customer}".`;
+  if (hits.length > 1) return `Several leads match: ${hits.slice(0, 5).map((l: any) => l.customer).join(", ")}. Which one?`;
+  const lead = hits[0];
+
+  if (lead.cadence?.status === "active") {
+    return `${lead.customer} already has an active cadence (${cadenceSummary(lead.cadence)}). Cancel or pause it first.`;
+  }
+  if (consentStatus(lead, "text") !== "granted") {
+    return consentStatus(lead, "text") === "revoked"
+      ? `HARD NO: ${lead.customer} revoked text consent.`
+      : `${lead.customer} has no text consent on file — capture it first.`;
+  }
+
+  const cadence = startCadence(template, ctx.viewer.employeeName || "EILA");
+  const steps = cadenceSteps(cadence);
+
+  await guardedMutate<any[]>(supabase, ctx.orgId, "crmLeads", (currentLeads) => {
+    return (currentLeads ?? []).map((l: any) =>
+      String(l?.id) === String(lead.id) ? { ...l, cadence } : l
+    );
+  });
+
+  const templateInfo = template === "custom" ? "Custom cadence" : CADENCE_TEMPLATES[template].label;
+  return `Started ✔ "${templateInfo}" cadence on ${lead.customer} — ${steps.length} steps over ${steps[steps.length - 1]?.day ?? 0} days. First text fires ${new Date(cadence.nextFireAt).toLocaleDateString()}. Cadence auto-pauses if the customer replies.`;
+}
+
+// ── manage_cadence — pause/resume/cancel a lead's cadence ─────────────────
+export async function handleManageCadence(input: any, ctx: EILAContext): Promise<string> {
+  const supabase = getSupabaseServerClient();
+  if (!supabase) return "Secure backend unavailable.";
+
+  const q = String(input?.customer || "").trim().toLowerCase();
+  if (!q) return "Which customer?";
+  const action = String(input?.action || "").toLowerCase();
+  if (!["pause", "resume", "cancel"].includes(action)) return "Action must be 'pause', 'resume', or 'cancel'.";
+
+  const leads = scopeLeads(Array.isArray(ctx.data.crmLeads) ? ctx.data.crmLeads : [], ctx.viewer) as any[];
+  const hits = leads.filter((l) => String(l.customer || "").toLowerCase().includes(q));
+  if (!hits.length) return `No working lead matches "${input?.customer}".`;
+  if (hits.length > 1) return `Several leads match: ${hits.slice(0, 5).map((l: any) => l.customer).join(", ")}. Which one?`;
+  const lead = hits[0];
+
+  if (!lead.cadence) return `${lead.customer} doesn't have a cadence running.`;
+
+  let newCadence: CadenceState;
+  if (action === "pause") {
+    newCadence = pauseCadence(lead.cadence, input?.reason || "Paused by user");
+  } else if (action === "resume") {
+    if (lead.cadence.status !== "paused") return `Cadence isn't paused — it's ${lead.cadence.status}.`;
+    newCadence = { ...lead.cadence, status: "active", pausedReason: undefined };
+  } else {
+    newCadence = { ...lead.cadence, status: "cancelled" };
+  }
+
+  await guardedMutate<any[]>(supabase, ctx.orgId, "crmLeads", (currentLeads) => {
+    return (currentLeads ?? []).map((l: any) =>
+      String(l?.id) === String(lead.id) ? { ...l, cadence: newCadence } : l
+    );
+  });
+
+  return `Done — ${lead.customer}'s cadence is now ${newCadence.status}${newCadence.pausedReason ? ` (${newCadence.pausedReason})` : ""}.`;
+}
+
+// ── text_analytics — conversation intelligence for coaching ───────────────
+export function handleTextAnalytics(input: any, ctx: EILAContext): string {
+  const leads: any[] = Array.isArray(ctx.data.crmLeads) ? ctx.data.crmLeads : [];
+  const now = new Date();
+
+  const repName = String(input?.rep || "").trim();
+  if (repName) {
+    // Per-rep detail
+    const repLeads = leads.filter((l) => samePerson(String(l.salesperson || ""), repName));
+    if (!repLeads.length) return `No leads found for ${repName}.`;
+    const withMsgs = repLeads.filter((l) => l.messages?.length > 0);
+    const nudges = textNudges(repLeads, now);
+    const metrics = withMsgs.map((l) => ({
+      customer: l.customer || "?",
+      ...responseMetrics(l.messages, now),
+      lastSentiment: l.messages?.filter((m: any) => m.dir === "in").slice(-1)[0]?.sentiment || "none",
+    }));
+
+    const out = [`=== Text Analytics — ${repName} ===`];
+    out.push(`Leads with text threads: ${withMsgs.length}`);
+    const totalOut = metrics.reduce((s, m) => s + m.totalOutbound, 0);
+    const totalIn = metrics.reduce((s, m) => s + m.totalInbound, 0);
+    out.push(`Total texts: ${totalOut} sent, ${totalIn} received`);
+    const responseTimes = metrics.filter((m) => m.avgResponseMinutes !== null).map((m) => m.avgResponseMinutes!);
+    if (responseTimes.length) {
+      const avg = Math.round((responseTimes.reduce((s, t) => s + t, 0) / responseTimes.length) * 10) / 10;
+      out.push(`Avg response time: ${avg} minutes`);
+    }
+    const waiting = metrics.filter((m) => m.waitingForReply);
+    if (waiting.length) {
+      out.push(`⚠ ${waiting.length} customer(s) waiting for a reply:`);
+      for (const m of waiting) out.push(`  ${m.customer} — waiting ${m.waitingMinutes ?? "?"}m`);
+    }
+    if (nudges.length) {
+      out.push("NUDGES:");
+      for (const n of nudges.slice(0, 10)) out.push(`  [${n.urgency}] ${n.customer}: ${n.reason}`);
+    }
+    return out.join("\n");
+  }
+
+  // Store-wide analytics
+  const analytics = repTextAnalytics(leads, now);
+  if (!analytics.length) return "No text activity to analyze yet.";
+  const nudges = textNudges(leads, now);
+
+  const out = [`=== Store Text Analytics ===`];
+  out.push("Rep | Sent | Received | Avg Response | Unanswered");
+  for (const r of analytics) {
+    out.push(`${r.name} | ${r.totalSent} | ${r.totalReceived} | ${r.avgResponseMinutes !== null ? `${r.avgResponseMinutes}m` : "—"} | ${r.unansweredCount}`);
+  }
+  if (nudges.length) {
+    out.push(`\n⚠ ${nudges.length} nudge(s):`);
+    for (const n of nudges.slice(0, 15)) out.push(`  [${n.urgency}] ${n.customer} (${n.salesperson}): ${n.reason}`);
+  }
+  return out.join("\n");
+}
+
+// ── broadcast_text — send a text to multiple leads at once ────────────────
+export async function handleBroadcastText(input: any, ctx: EILAContext): Promise<string> {
+  if (!twilioConfigured()) return "Texting isn't connected for this store yet.";
+
+  const role = ctx.viewer.role;
+  if (!(role === "Admin" || role === "Manager" || role === "F&I")) {
+    return "Broadcast texting is a manager/admin feature.";
+  }
+
+  const filter = String(input?.filter || "").toLowerCase();
+  const message = String(input?.message || "").trim();
+  if (!message) return "I need a message to broadcast.";
+
+  const leads: any[] = Array.isArray(ctx.data.crmLeads) ? ctx.data.crmLeads : [];
+  let targets: any[];
+
+  if (filter === "appointments_today") {
+    const today = new Date().toISOString().slice(0, 10);
+    targets = leads.filter((l) => l.appointment && String(l.appointment).slice(0, 10) === today && l.status !== "Lost" && l.status !== "Won");
+  } else if (filter === "appointments_tomorrow") {
+    const tomorrow = new Date(); tomorrow.setDate(tomorrow.getDate() + 1);
+    const tomorrowStr = tomorrow.toISOString().slice(0, 10);
+    targets = leads.filter((l) => l.appointment && String(l.appointment).slice(0, 10) === tomorrowStr && l.status !== "Lost" && l.status !== "Won");
+  } else if (filter.startsWith("status:")) {
+    const status = filter.replace("status:", "").trim();
+    targets = leads.filter((l) => String(l.status || "").toLowerCase() === status);
+  } else if (filter.startsWith("rep:")) {
+    const repName = filter.replace("rep:", "").trim();
+    targets = leads.filter((l) => String(l.salesperson || "").toLowerCase().includes(repName));
+  } else {
+    return `I need a filter to select recipients. Options:\n• appointments_today — all customers with today's appointments\n• appointments_tomorrow — all customers with tomorrow's appointments\n• status:<stage> — all leads in a specific stage (e.g. status:working)\n• rep:<name> — all leads for a specific rep`;
+  }
+
+  // Filter to those with text consent
+  const consented = targets.filter((l) => l.customerPhone && consentStatus(l, "text") === "granted" && !textRevokedAnywhere(leads, String(l.customerPhone || "")));
+  const noConsent = targets.length - consented.length;
+
+  if (!consented.length) return `No leads match that filter with text consent. (${targets.length} matched, ${noConsent} lack consent.)`;
+
+  if (input?.confirm !== true) {
+    const preview = consented.slice(0, 10).map((l) => `${l.customer || "?"} · ${l.salesperson || "?"}`).join("\n");
+    return [
+      `READY TO BROADCAST — needs your go-ahead (then call again with confirm:true):`,
+      `Recipients: ${consented.length} (${noConsent} filtered out — no consent)`,
+      `Message: "${message}"`,
+      `Preview of recipients:`,
+      preview,
+      consented.length > 10 ? `... and ${consented.length - 10} more` : "",
+    ].filter(Boolean).join("\n");
+  }
+
+  // Send! Use the scheduled text system for reliability
+  const supabase = getSupabaseServerClient();
+  if (!supabase) return "Secure backend unavailable.";
+
+  const now = new Date().toISOString();
+  const scheduledTexts: ScheduledText[] = consented.map((l) => ({
+    id: makeScheduledTextId(),
+    leadId: String(l.id),
+    body: message.replace("{name}", (l.customer || "").split(" ")[0] || "there").replace("{vehicle}", l.vehicle || "your vehicle"),
+    scheduledAt: now, // fire immediately
+    createdAt: now,
+    createdBy: ctx.viewer.employeeName || "Admin",
+    status: "pending" as const,
+  }));
+
+  await guardedMutate<ScheduledText[]>(supabase, ctx.orgId, "scheduledTexts", (current) => {
+    return [...(current ?? []), ...scheduledTexts];
+  });
+
+  return `Broadcast queued ✔ ${scheduledTexts.length} texts will fire within the next minute. Message: "${message}"`;
+}
+
+export const SCHEDULE_TEXT_TOOL = {
+  name: "schedule_text",
+  description:
+    "Schedule a text message to send to a customer at a specific future time. The consent gate re-checks at send time, so a STOP that arrives after scheduling is honored. Use for 'text Smith tomorrow at 9am', 'remind Chen about their appointment in 2 hours', etc.",
+  input_schema: {
+    type: "object",
+    properties: {
+      customer: { type: "string", description: "Customer name (or part of one) on the working lead." },
+      message: { type: "string", description: "The text to send. Keep it short and human." },
+      when: { type: "string", description: "When to send — natural language like 'tomorrow at 9am', 'in 2 hours', 'today at 3pm', or ISO datetime." },
+      imageUrl: { type: "string", description: "Optional: publicly accessible image URL for MMS." },
+    },
+    required: ["customer", "message", "when"],
+  },
+};
+
+export const CANCEL_SCHEDULED_TEXT_TOOL = {
+  name: "cancel_scheduled_text",
+  description:
+    "Cancel a pending scheduled text before it fires. Use list_scheduled_texts to find the ID first.",
+  input_schema: {
+    type: "object",
+    properties: { textId: { type: "string", description: "The scheduled text ID (e.g. ST-1234567890)" } },
+    required: ["textId"],
+  },
+};
+
+export const LIST_SCHEDULED_TEXTS_TOOL = {
+  name: "list_scheduled_texts",
+  description: "Show all pending scheduled texts — what's queued to fire and when.",
+  input_schema: { type: "object", properties: {} },
+};
+
+export const START_CADENCE_TOOL = {
+  name: "start_cadence",
+  description:
+    "Start a follow-up text cadence on a lead — an automated drip sequence that sends contextual texts over days/weeks. Templates: new_lead (14-day nurture), post_visit (didn't close), post_quote (numbers sent), service_followup (declined work), equity_trade (trade-up opportunity). Auto-pauses when the customer replies. Consent-gated.",
+  input_schema: {
+    type: "object",
+    properties: {
+      customer: { type: "string", description: "Customer name on the working lead." },
+      template: { type: "string", enum: ["new_lead", "post_visit", "post_quote", "service_followup", "equity_trade"], description: "Which cadence template to run." },
+    },
+    required: ["customer", "template"],
+  },
+};
+
+export const MANAGE_CADENCE_TOOL = {
+  name: "manage_cadence",
+  description:
+    "Pause, resume, or cancel a lead's active follow-up cadence. Use when you need to manually intervene in an automated sequence.",
+  input_schema: {
+    type: "object",
+    properties: {
+      customer: { type: "string", description: "Customer name on the working lead." },
+      action: { type: "string", enum: ["pause", "resume", "cancel"], description: "What to do with the cadence." },
+      reason: { type: "string", description: "Why (for pause — shows on the lead card)." },
+    },
+    required: ["customer", "action"],
+  },
+};
+
+export const TEXT_ANALYTICS_TOOL = {
+  name: "text_analytics",
+  description:
+    "Text conversation intelligence — response times, sentiment trends, unanswered messages, and coaching nudges. Call without a rep name for the store-wide dashboard, or with a rep name for their individual stats. Use for 'how's our texting', 'who has unanswered texts', 'how fast does Bo reply'.",
+  input_schema: {
+    type: "object",
+    properties: { rep: { type: "string", description: "Optional: drill into one rep's text stats." } },
+  },
+};
+
+export const BROADCAST_TEXT_TOOL = {
+  name: "broadcast_text",
+  description:
+    "Send a text to multiple leads at once — manager/admin only. Consent-gated per recipient. Two-step: call WITHOUT confirm to preview the recipient list, call with confirm:true after approval. Supports {name} and {vehicle} placeholders. Filters: appointments_today, appointments_tomorrow, status:<stage>, rep:<name>.",
+  input_schema: {
+    type: "object",
+    properties: {
+      filter: { type: "string", description: "Who to text: 'appointments_today', 'appointments_tomorrow', 'status:working', 'rep:Marcus'" },
+      message: { type: "string", description: "The message. Use {name} for customer first name, {vehicle} for their vehicle." },
+      confirm: { type: "boolean", description: "true ONLY after the user approved the preview." },
+    },
+    required: ["filter", "message"],
   },
 };
 

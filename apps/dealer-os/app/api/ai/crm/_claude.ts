@@ -6,7 +6,7 @@ import { saveRepObservation, saveCustomerObservation, savePatternObservation, sa
 import { handleQueryDeals, handleDealJacket, handleRepDetail, handleEstimatePay, handleNextLeads, handleAppointments, handleEquity, handleDealsAtRisk, handleReadArchive, QUERY_DEALS_TOOL, DEAL_JACKET_TOOL, REP_DETAIL_TOOL, ESTIMATE_PAY_TOOL, NEXT_LEADS_TOOL, APPOINTMENTS_TOOL, EQUITY_TOOL, AT_RISK_TOOL, READ_ARCHIVE_TOOL } from "./_tools-read";
 import { handleUpdateLead, handleUpdateDeal, handleSetGoals, handleCloseMonth, handleServiceUpdate, handlePartsUpdate, UPDATE_LEAD_TOOL, UPDATE_DEAL_TOOL, SET_GOALS_TOOL, CLOSE_MONTH_TOOL, SERVICE_UPDATE_TOOL, PARTS_UPDATE_TOOL } from "./_tools-write";
 import { handleLookupRate, handleDecodeVin, handleSpeedToLead, handleCheckConsent, LOOKUP_RATE_TOOL, DECODE_VIN_TOOL, SPEED_TO_LEAD_TOOL, CHECK_CONSENT_TOOL } from "./_tools-lookup";
-import { handleGroupReport, handleServiceLane, handlePartsCounter, handleFixedOpsDigest, handleTextCustomer, handleRestoreBackup, GROUP_REPORT_TOOL, SERVICE_LANE_TOOL, PARTS_COUNTER_TOOL, FIXED_OPS_DIGEST_TOOL, TEXT_CUSTOMER_TOOL, RESTORE_BACKUP_TOOL } from "./_tools-ops";
+import { handleGroupReport, handleServiceLane, handlePartsCounter, handleFixedOpsDigest, handleTextCustomer, handleRestoreBackup, handleScheduleText, handleCancelScheduledText, handleListScheduledTexts, handleStartCadence, handleManageCadence, handleTextAnalytics, handleBroadcastText, GROUP_REPORT_TOOL, SERVICE_LANE_TOOL, PARTS_COUNTER_TOOL, FIXED_OPS_DIGEST_TOOL, TEXT_CUSTOMER_TOOL, RESTORE_BACKUP_TOOL, SCHEDULE_TEXT_TOOL, CANCEL_SCHEDULED_TEXT_TOOL, LIST_SCHEDULED_TEXTS_TOOL, START_CADENCE_TOOL, MANAGE_CADENCE_TOOL, TEXT_ANALYTICS_TOOL, BROADCAST_TEXT_TOOL } from "./_tools-ops";
 import { COACHING_PROMPT } from "./_prompts";
 
 const REMEMBER_TOOL = {
@@ -75,7 +75,7 @@ const REMEMBER_MISTAKE_TOOL = {
 const ANTHROPIC_API = "https://api.anthropic.com/v1/messages";
 const ASSISTANT_MODEL = "claude-opus-4-8";
 
-export const EILA_TOOLS = [QUERY_DEALS_TOOL, DEAL_JACKET_TOOL, REP_DETAIL_TOOL, ESTIMATE_PAY_TOOL, NEXT_LEADS_TOOL, APPOINTMENTS_TOOL, EQUITY_TOOL, AT_RISK_TOOL, READ_ARCHIVE_TOOL, UPDATE_LEAD_TOOL, UPDATE_DEAL_TOOL, SET_GOALS_TOOL, CLOSE_MONTH_TOOL, SERVICE_UPDATE_TOOL, PARTS_UPDATE_TOOL, LOOKUP_RATE_TOOL, DECODE_VIN_TOOL, SPEED_TO_LEAD_TOOL, CHECK_CONSENT_TOOL, GROUP_REPORT_TOOL, SERVICE_LANE_TOOL, PARTS_COUNTER_TOOL, FIXED_OPS_DIGEST_TOOL, TEXT_CUSTOMER_TOOL, RESTORE_BACKUP_TOOL, REMEMBER_TOOL, REMEMBER_CUSTOMER_TOOL, REMEMBER_PATTERN_TOOL, REMEMBER_MISTAKE_TOOL];
+export const EILA_TOOLS = [QUERY_DEALS_TOOL, DEAL_JACKET_TOOL, REP_DETAIL_TOOL, ESTIMATE_PAY_TOOL, NEXT_LEADS_TOOL, APPOINTMENTS_TOOL, EQUITY_TOOL, AT_RISK_TOOL, READ_ARCHIVE_TOOL, UPDATE_LEAD_TOOL, UPDATE_DEAL_TOOL, SET_GOALS_TOOL, CLOSE_MONTH_TOOL, SERVICE_UPDATE_TOOL, PARTS_UPDATE_TOOL, LOOKUP_RATE_TOOL, DECODE_VIN_TOOL, SPEED_TO_LEAD_TOOL, CHECK_CONSENT_TOOL, GROUP_REPORT_TOOL, SERVICE_LANE_TOOL, PARTS_COUNTER_TOOL, FIXED_OPS_DIGEST_TOOL, TEXT_CUSTOMER_TOOL, SCHEDULE_TEXT_TOOL, CANCEL_SCHEDULED_TEXT_TOOL, LIST_SCHEDULED_TEXTS_TOOL, START_CADENCE_TOOL, MANAGE_CADENCE_TOOL, TEXT_ANALYTICS_TOOL, BROADCAST_TEXT_TOOL, RESTORE_BACKUP_TOOL, REMEMBER_TOOL, REMEMBER_CUSTOMER_TOOL, REMEMBER_PATTERN_TOOL, REMEMBER_MISTAKE_TOOL];
 
 
 // Call Anthropic with retry on transient errors (429 / 5xx / 529 overloaded) so
@@ -138,6 +138,13 @@ export async function runToolCalls(content: any[], ctx: EILAContext, toolsUsed: 
       else if (b.name === "parts_counter") out = handlePartsCounter(b.input, ctx);
       else if (b.name === "fixed_ops_digest") out = handleFixedOpsDigest(b.input, ctx);
       else if (b.name === "text_customer") out = await handleTextCustomer(b.input, ctx);
+      else if (b.name === "schedule_text") out = await handleScheduleText(b.input, ctx);
+      else if (b.name === "cancel_scheduled_text") out = await handleCancelScheduledText(b.input, ctx);
+      else if (b.name === "list_scheduled_texts") out = handleListScheduledTexts(b.input, ctx);
+      else if (b.name === "start_cadence") out = await handleStartCadence(b.input, ctx);
+      else if (b.name === "manage_cadence") out = await handleManageCadence(b.input, ctx);
+      else if (b.name === "text_analytics") out = handleTextAnalytics(b.input, ctx);
+      else if (b.name === "broadcast_text") out = await handleBroadcastText(b.input, ctx);
       else if (b.name === "restore_backup") out = await handleRestoreBackup(b.input, ctx);
       else if (b.name === "remember_rep") out = await saveRepObservation(b.input, ctx.orgId);
       else if (b.name === "remember_customer") out = await saveCustomerObservation(b.input, ctx.orgId);

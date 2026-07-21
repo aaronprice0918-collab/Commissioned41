@@ -18,6 +18,7 @@ export async function sendTextToLead(opts: {
   body: string;
   senderName: string;
   role: string;
+  mediaUrl?: string; // MMS attachment — publicly accessible image/video URL
 }): Promise<SendTextResult> {
   const { supabase, orgId, leadId, senderName, role } = opts;
   const body = opts.body.trim();
@@ -66,7 +67,7 @@ export async function sendTextToLead(opts: {
   }
 
   const finalBody = withOptOutNotice(body, lead.messages);
-  const sent = await sendSms(to, finalBody, orgFrom || undefined);
+  const sent = await sendSms(to, finalBody, orgFrom || undefined, opts.mediaUrl);
   if (!sent.ok) return { ok: false, error: sent.error, status: 502 };
 
   const message: LeadMessage = { dir: "out", body: finalBody, at: new Date().toISOString(), by: senderName, sid: sent.sid };

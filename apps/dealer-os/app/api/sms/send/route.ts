@@ -44,6 +44,7 @@ export async function POST(request: NextRequest) {
     body: String(payload?.body || ""),
     senderName: String(profile.employee_name || profile.display_name || userData.user.email || ""),
     role: isOwnerEmail(userData.user.email) ? "Admin" : normalizeAccessRole(profile.role),
+    mediaUrl: typeof payload?.mediaUrl === "string" ? payload.mediaUrl : undefined,
   });
 
   if (!result.ok) return NextResponse.json({ error: result.error }, { status: result.status });

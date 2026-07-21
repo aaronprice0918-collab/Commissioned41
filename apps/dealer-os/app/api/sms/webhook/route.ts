@@ -4,6 +4,8 @@ import { DEFAULT_ORG_ID } from "@/lib/orgs";
 import { recordConsentPatch } from "@/lib/consent";
 import { appendMessagePatch, inboundConsentEvent, matchLeadByPhone, samePhone, type LeadMessage } from "@/lib/comms";
 import { twilioCredsPresent, verifyTwilioSignature } from "@/lib/twilio";
+import { scoreSentiment } from "@/lib/textIntelligence";
+import { pauseCadence } from "@/lib/followUpCadence";
 
 // Inbound texts from Twilio. Two jobs, both compliance-load-bearing:
 // 1. Land the customer's reply on their lead's thread so the store SEES it
@@ -79,7 +81,9 @@ export async function POST(request: NextRequest) {
   }
 
   const at = new Date().toISOString();
-  const message: LeadMessage = { dir: "in", body, at, sid: params.MessageSid || undefined };
+  const sentiment = scoreSentiment(body);
+  const mediaUrl = params.MediaUrl0 || undefined; // first MMS attachment if any
+  const message: LeadMessage = { dir: "in", body, at, sid: params.MessageSid || undefined, mediaUrl, sentiment: sentiment.label };
   const consentEvent = inboundConsentEvent(body, at);
 
   // The message lands on the newest matching lead; a consent keyword (STOP /
@@ -90,7 +94,14 @@ export async function POST(request: NextRequest) {
     const isSamePhone = samePhone(String(l?.customerPhone || ""), from);
     if (!isThread && !(consentEvent && isSamePhone)) return l;
     let next = l;
-    if (isThread) next = { ...next, ...appendMessagePatch(next, message) };
+    if (isThread) {
+      next = { ...next, ...appendMessagePatch(next, message) };
+      // Auto-pause any active cadence when the customer replies — a human
+      // conversation is happening, the drip should step aside.
+      if (next.cadence?.status === "active") {
+        next = { ...next, cadence: pauseCadence(next.cadence, "Customer replied — switch to live conversation") };
+      }
+    }
     if (consentEvent && isSamePhone) next = { ...next, ...recordConsentPatch(next, consentEvent) };
     return next;
   };
