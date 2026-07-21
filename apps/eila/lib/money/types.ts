@@ -54,6 +54,9 @@ export interface SpendEntry {
   amount: number;
   category: string;
   note?: string;
+  /** "bank" when auto-derived from a synced transaction (rebuilt on every
+   * sync); absent for entries the user or EILA logged by hand (preserved). */
+  source?: "bank";
 }
 
 export interface MoneyGoal {
