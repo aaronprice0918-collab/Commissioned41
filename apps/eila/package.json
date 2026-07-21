@@ -9,7 +9,8 @@
     "test": "vitest run"
   },
   "dependencies": {
-    "@anthropic-ai/sdk": "^0.109.0",
+    "@anthropic-ai/sdk": "^0.112.4",
+    "@commissioned41/ila-core": "*",
     "@supabase/supabase-js": "^2.108.2",
     "clsx": "^2.1.1",
     "lucide-react": "^0.468.0",
@@ -19,9 +20,8 @@
     "react": "^19.2.7",
     "react-dom": "^19.2.7",
     "react-plaid-link": "^4.1.1",
-    "stripe": "^22.3.0",
-    "web-push": "^3.6.7",
-    "@commissioned41/ila-core": "*"
+    "stripe": "^22.3.2",
+    "web-push": "^3.6.7"
   },
   "devDependencies": {
     "@types/node": "^22.10.0",
