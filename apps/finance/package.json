@@ -14,15 +14,15 @@
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.109.0",
+    "@commissioned41/ila-core": "*",
     "@prisma/adapter-pg": "^7.8.0",
     "@prisma/client": "^7.8.0",
-    "next": "16.2.9",
+    "next": "^16.2.11",
     "pg": "^8.22.0",
     "plaid": "^42.2.0",
     "react": "19.2.4",
     "react-dom": "19.2.4",
-    "react-plaid-link": "^4.1.1",
-    "@commissioned41/ila-core": "*"
+    "react-plaid-link": "^4.1.1"
   },
   "devDependencies": {
     "@tailwindcss/postcss": "^4",
@@ -33,6 +33,7 @@
     "eslint": "^9",
     "eslint-config-next": "16.2.9",
     "prisma": "^7.8.0",
+    "sharp": "^0.35.3",
     "tailwindcss": "^4",
     "typescript": "^5"
   }
