@@ -71,6 +71,7 @@ type Face = "loading" | "pitch" | "connect" | "connected" | "unavailable" | "sig
 export function BankLink() {
   const { data, updateMoney } = useMission();
   const cfg = data.profile?.money ?? defaultMoneyConfig();
+  const holderName = data.profile?.name;
 
   const [face, setFace] = useState<Face>(cfg.bank ? "connected" : "loading");
   const [busy, setBusy] = useState(false);
@@ -133,7 +134,7 @@ export function BankLink() {
       }
       const sync = r.sync as BankSyncPayload | null | undefined;
       if (sync) {
-        updateMoney(applyBankSync(cfg, sync, new Date().toISOString()));
+        updateMoney(applyBankSync(cfg, sync, new Date().toISOString(), holderName));
         setFace("connected");
         const chk = sync.checking != null ? `checking $${Math.round(sync.checking).toLocaleString()}` : "no checking found";
         setNote(`Synced ✓ ${chk} · ${sync.transactions.length} recent transactions checked`);
@@ -142,7 +143,7 @@ export function BankLink() {
       setBusy(false);
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [cfg, updateMoney]);
+  }, [cfg, updateMoney, holderName]);
 
   const onSuccess = useCallback(
     async (publicToken: string, metadata: PlaidLinkOnSuccessMetadata) => {
