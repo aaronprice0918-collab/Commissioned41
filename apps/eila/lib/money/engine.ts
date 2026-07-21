@@ -784,6 +784,77 @@ const VARIABLE_SPEND_WORDS = [
   "walmart",
 ];
 
+// Money that LEAVES checking but isn't everyday consumption — internal moves
+// and credit-card payoffs. Excluded from everyday spend so "money out" isn't
+// inflated by cash you still have (savings) or debt already tracked elsewhere.
+const TRANSFER_WORDS = [
+  "internal transfer",
+  "online transfer",
+  "transfer to",
+  "to savings",
+  "savings transfer",
+  "xfer",
+  "cash app transfer",
+];
+
+// Coarse everyday-spend category from a merchant name, so budget-vs-actual has
+// useful buckets instead of one "Everyday" lump. Falls back to "Everyday".
+const EVERYDAY_CATEGORIES: { category: string; words: string[] }[] = [
+  { category: "Gas", words: ["gas", "fuel", "shell", "chevron", "exxon", "bp", "qt", "quiktrip", "marathon", "circle k"] },
+  { category: "Groceries", words: ["grocery", "kroger", "publix", "walmart", "target", "costco", "sam's", "aldi", "trader joe", "whole foods"] },
+  { category: "Dining", words: ["restaurant", "mcdonald", "chipotle", "chick-fil-a", "starbucks", "dunkin", "coffee", "doordash", "uber eats", "grubhub"] },
+  { category: "Travel", words: ["uber trip", "lyft", "delta", "airbnb", "hotel", "airlines", "marriott", "hilton"] },
+];
+
+function everydayCategoryFor(name: string): string {
+  for (const { category, words } of EVERYDAY_CATEGORIES) {
+    if (hasBankWord(name, words)) return category;
+  }
+  return "Everyday";
+}
+
+// True when a bank outflow is real everyday consumption — NOT a bill, debt
+// payment, subscription, internal transfer, or a known named bill. This is the
+// money that was silently vanishing: counted against the balance but never
+// against "money out".
+function isEverydaySpend(name: string, knownBills: Bill[]): boolean {
+  if (hasBankWord(name, DEBT_WORDS)) return false;
+  if (hasBankWord(name, HOUSEHOLD_BILL_WORDS)) return false;
+  if (hasBankWord(name, SUBSCRIPTION_WORDS)) return false;
+  if (hasBankWord(name, TRANSFER_WORDS)) return false;
+  if (knownBills.some((b) => sameBankBillName(b.name, name))) return false;
+  return true;
+}
+
+// Rebuild the bank-derived everyday spend from a transaction window. Only real
+// outflows within the last 92 days, deduped by a stable per-transaction id so
+// re-syncing replaces (never duplicates) and manual logs are untouched.
+function everydaySpendFromBank(
+  transactions: BankSyncPayload["transactions"],
+  knownBills: Bill[],
+  nowISO: string,
+): SpendEntry[] {
+  const cutoff = iso(new Date(fromIso(nowISO.slice(0, 10)).getTime() - 92 * DAY));
+  const out: SpendEntry[] = [];
+  let seq = 0;
+  for (const tx of transactions) {
+    if (!tx.name || tx.amount >= 0) continue; // income/refunds are positive
+    const amount = Math.round(Math.abs(tx.amount));
+    if (amount < 1) continue;
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(tx.date) || tx.date < cutoff) continue;
+    if (!isEverydaySpend(tx.name, knownBills)) continue;
+    out.push({
+      id: `bank-tx-${seq++}-${bankBillCompact(tx.name).slice(0, 32)}`,
+      date: tx.date,
+      amount,
+      category: everydayCategoryFor(tx.name),
+      note: bankBillDisplayName(tx.name),
+      source: "bank",
+    });
+  }
+  return out;
+}
+
 function bankBillCompact(input: string): string {
   return input.toLowerCase().replace(/&/g, "and").replace(/[^a-z0-9]+/g, "");
 }
@@ -939,5 +1010,14 @@ export function applyBankSync(cfg: MoneyConfig, sync: BankSyncPayload, nowISO: s
   };
   next.bankTransactions = sync.transactions.slice(0, 200);
   next.bills = addMissingBankBills(cfg.bills, detectRecurringBankBills(sync.transactions));
+  // Everyday spend from the feed. Without this, variable purchases (gas,
+  // groceries, dining, shopping) hit the balance but never "money out", so the
+  // budget shows $0 spent while the account is actually empty. Bills/debt are
+  // excluded here (they're counted as landed bill instances) using the merged
+  // bill set, so nothing is double-counted. Manual logs are kept as-is; only
+  // the bank-derived slice is rebuilt each sync.
+  const manualSpend = (cfg.spend ?? []).filter((e) => e.source !== "bank");
+  const bankSpend = everydaySpendFromBank(sync.transactions, next.bills, nowISO);
+  next.spend = [...manualSpend, ...bankSpend];
   return next;
 }
