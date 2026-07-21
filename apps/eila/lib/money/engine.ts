@@ -507,7 +507,7 @@ export function budgetMonth(cfg: MoneyConfig, now: Date): BudgetMonth | null {
  * budget scorecard, not a bank archive. */
 export function addSpend(
   cfg: MoneyConfig,
-  entry: { amount: number; category: string; note?: string; date?: string },
+  entry: { amount: number; category: string; note?: string; date?: string; account?: string },
   todayIso: string,
   makeId: () => string,
 ): MoneyConfig {
@@ -524,6 +524,7 @@ export function addSpend(
         amount: Math.round(Math.abs(entry.amount)),
         category: entry.category.trim() || "Other",
         note: entry.note?.trim() || undefined,
+        account: entry.account || undefined,
       },
     ],
   };
@@ -673,7 +674,7 @@ export interface BankSyncPayload {
   accounts: { name: string; mask: string; type: "checking" | "savings" | "credit" | "other"; balance: number }[];
   checking: number | null;
   savings: number | null;
-  transactions: { date: string; name: string; amount: number }[];
+  transactions: { date: string; name: string; amount: number; account?: string }[];
   asOf: string;
 }
 
@@ -904,6 +905,9 @@ function everydaySpendFromBank(
       category: everydayCategoryFor(tx.name, rules),
       note: bankBillDisplayName(tx.name),
       source: "bank",
+      // Carry the source account through from the stored transaction, so the
+      // spend line keeps showing which bank it came out of after every recompute.
+      account: tx.account,
     });
   }
   return out;
@@ -1110,6 +1114,50 @@ export function accountsSummary(cfg: MoneyConfig): {
   const savings = sumBy(accts, "savings");
   const debt = Math.round((sumBy(accts, "credit") + sumBy(accts, "loan")) * 100) / 100;
   return { checking, savings, liquid: Math.round((checking + savings) * 100) / 100, debt, accounts: accts };
+}
+
+/** Find one linked account by id. */
+export function findAccount(cfg: MoneyConfig, accountId?: string): LinkedAccount | undefined {
+  if (!accountId) return undefined;
+  return (cfg.linkedAccounts ?? []).find((a) => a.id === accountId);
+}
+
+/** A short, human label for the account a charge came from — e.g.
+ * "Bank of America · Checking ····8714". Returns undefined when the account
+ * isn't known/linked, so the UI can show a "Set account" affordance instead. */
+export function accountLabelFor(cfg: MoneyConfig, accountId?: string): string | undefined {
+  const a = findAccount(cfg, accountId);
+  if (!a) return undefined;
+  const tail = a.mask ? ` ····${a.mask}` : "";
+  return `${a.institution} · ${a.name}${tail}`;
+}
+
+/** Tell the app which account a charge came out of — the "which bank was this?"
+ * write path. For a synced line it stamps the source account onto every stored
+ * transaction from that merchant (so it survives every recompute and applies to
+ * past + future charges from it), then re-derives the bank spend. For a
+ * hand-logged entry it just sets the account on that one entry. Passing a falsy
+ * accountId clears the attribution. Mirrors the merchant-rule "learn once"
+ * model so a correction only happens once. */
+export function setSpendAccount(
+  cfg: MoneyConfig,
+  entry: { id: string; source?: "bank"; note?: string; category: string },
+  accountId: string | undefined,
+  nowISO: string,
+): MoneyConfig {
+  const account = accountId || undefined;
+  if (entry.source === "bank") {
+    const key = merchantKeyFor(entry.note || entry.category);
+    if (key.length < 3 || !cfg.bankTransactions?.length) {
+      // No durable transaction to stamp — fall back to setting this one entry.
+      return { ...cfg, spend: (cfg.spend ?? []).map((e) => (e.id === entry.id ? { ...e, account } : e)) };
+    }
+    const bankTransactions = cfg.bankTransactions.map((tx) =>
+      merchantKeyFor(tx.name) === key ? { ...tx, account } : tx,
+    );
+    return recomputeBankSpend({ ...cfg, bankTransactions }, nowISO);
+  }
+  return { ...cfg, spend: (cfg.spend ?? []).map((e) => (e.id === entry.id ? { ...e, account } : e)) };
 }
 
 // The merchant key used for a learned rule — same normalization the matcher

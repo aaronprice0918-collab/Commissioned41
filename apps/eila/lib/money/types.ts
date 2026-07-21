@@ -57,6 +57,11 @@ export interface SpendEntry {
   /** "bank" when auto-derived from a synced transaction (rebuilt on every
    * sync); absent for entries the user or EILA logged by hand (preserved). */
   source?: "bank";
+  /** Which account this charge came out of — a `LinkedAccount.id`. Bank syncs
+   * set it from the transaction's own account; the member can tap a line to
+   * set/correct it (for synced lines it's stamped on the stored transaction so
+   * it survives every recompute). Absent = account not known yet. */
+  account?: string;
 }
 
 export interface MoneyGoal {
@@ -115,8 +120,10 @@ export interface MoneyConfig {
     accounts: { name: string; mask: string; type: "checking" | "savings" | "credit" | "other"; balance: number }[];
   };
   /** Recent settled bank activity from the last sync (newest first, outflows
-   * negative) — EILA's ground truth for "where did it go". */
-  bankTransactions?: { date: string; name: string; amount: number }[];
+   * negative) — EILA's ground truth for "where did it go". `account` is the
+   * source `LinkedAccount.id` (set by Plaid per transaction, or stamped when the
+   * member assigns an account to a line) so the derived spend keeps its source. */
+  bankTransactions?: { date: string; name: string; amount: number; account?: string }[];
   /** The account holder's name (from their profile at sync time) — lets a
    * re-classify recompute still catch Zelle/transfers to themselves. */
   accountHolder?: string;
