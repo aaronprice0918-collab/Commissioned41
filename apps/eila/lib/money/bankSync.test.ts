@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { applyBankSync, budgetMonth, type BankSyncPayload } from "./engine";
+import { applyBankSync, budgetMonth, setMerchantRule, type BankSyncPayload } from "./engine";
 import { defaultMoneyConfig, type SpendEntry } from "./types";
 
 const SYNC: BankSyncPayload = {
@@ -224,5 +224,54 @@ describe("applyBankSync — everyday spend from the feed", () => {
     expect(spend.find((e) => e.note?.includes("Kroger"))?.category).toBe("Groceries");
     expect(spend.find((e) => e.note?.includes("Murphy"))?.category).toBe("Gas");
     expect(spend.find((e) => e.note?.includes("Outback"))?.category).toBe("Dining");
+  });
+});
+
+describe("merchant rules — the always-learning layer", () => {
+  const NOW = "2026-07-13T04:00:00Z";
+  const bankSpend = (cfg: ReturnType<typeof defaultMoneyConfig>): SpendEntry[] =>
+    (cfg.spend ?? []).filter((e) => e.source === "bank");
+  const syncWith = (txns: BankSyncPayload["transactions"]) =>
+    applyBankSync(defaultMoneyConfig(), { ...SYNC, transactions: txns }, NOW);
+
+  it("learns to IGNORE a merchant and re-classifies instantly (no re-sync)", () => {
+    const synced = syncWith([
+      { date: "2026-07-06", name: "Kroger", amount: -83.16 },
+      { date: "2026-07-13", name: "River Remedy", amount: -27.45 },
+    ]);
+    expect(bankSpend(synced)).toHaveLength(2);
+    const taught = setMerchantRule(synced, "River Remedy", "ignore", undefined, NOW);
+    const spend = bankSpend(taught);
+    expect(spend).toHaveLength(1);
+    expect(spend[0].note).toContain("Kroger");
+  });
+
+  it("learns a word-list merchant IS everyday, with the member's category", () => {
+    const synced = syncWith([{ date: "2026-07-01", name: "Apple", amount: -46.46 }]);
+    expect(bankSpend(synced)).toHaveLength(0); // auto-excluded as a subscription
+    const taught = setMerchantRule(synced, "Apple", "everyday", "Fun", NOW);
+    const spend = bankSpend(taught);
+    expect(spend).toHaveLength(1);
+    expect(spend[0].category).toBe("Fun");
+  });
+
+  it("remembers the lesson across the next sync", () => {
+    const feed = [{ date: "2026-07-01", name: "Mystery LLC", amount: -200 }];
+    let cfg = syncWith(feed);
+    expect(bankSpend(cfg)).toHaveLength(1); // unknown merchant defaults to everyday
+    cfg = setMerchantRule(cfg, "Mystery LLC", "bill", undefined, NOW);
+    expect(bankSpend(cfg)).toHaveLength(0);
+    const resynced = applyBankSync(cfg, { ...SYNC, transactions: feed }, "2026-07-14T04:00:00Z");
+    expect(bankSpend(resynced)).toHaveLength(0); // rule survived the sync
+    expect(resynced.merchantRules).toHaveLength(1);
+  });
+
+  it("can forget a rule (back to auto-detect)", () => {
+    let cfg = syncWith([{ date: "2026-07-01", name: "Mystery LLC", amount: -200 }]);
+    cfg = setMerchantRule(cfg, "Mystery LLC", "ignore", undefined, NOW);
+    expect(bankSpend(cfg)).toHaveLength(0);
+    cfg = setMerchantRule(cfg, "Mystery LLC", "remove", undefined, NOW);
+    expect(bankSpend(cfg)).toHaveLength(1);
+    expect(cfg.merchantRules ?? []).toHaveLength(0);
   });
 });

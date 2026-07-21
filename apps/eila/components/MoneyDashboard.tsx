@@ -28,11 +28,13 @@ import {
   incomeExpectation,
   monthBills,
   monthChecks,
+  merchantKeyFor,
   safeToSpend,
   seedBudgetsFromProfile,
+  setMerchantRule,
   type StatementScan,
 } from "@/lib/money/engine";
-import type { Bill, BillCadence, BudgetMonth, LedgerRow, MoneyConfig, MoneyGoal, MonthBill } from "@/lib/money/types";
+import type { Bill, BillCadence, BudgetMonth, LedgerRow, MerchantRule, MoneyConfig, MoneyGoal, MonthBill } from "@/lib/money/types";
 import { defaultMoneyConfig } from "@/lib/money/types";
 import { changedFields, mergeListBy } from "@/lib/mergeEdits";
 import { CountUp } from "@/components/motion";
@@ -536,6 +538,7 @@ export function MoneyDashboard() {
         onClose={() => setHistoryOpen(false)}
         cfg={cfg}
         onRemove={(id) => updateMoney(removeSpend(cfg, id))}
+        onReclassify={(merchant, kind, category) => updateMoney(setMerchantRule(cfg, merchant, kind, category, todayIso()))}
       />
       <LogSpendSheet
         open={logOpen}
@@ -1032,36 +1035,105 @@ export function LogSpendSheet({
   );
 }
 
-/** The spend log, editable — every logged purchase, newest first, one tap
- * to take one back out (returned it, test entry, fat-fingered). */
+// Plain-English buckets for the "what is this?" tap. No jargon.
+const SPEND_CATEGORIES = ["Groceries", "Gas", "Dining", "Shopping", "Fun", "Other"];
+
+/** The spend log, editable — every purchase (synced or logged), newest first.
+ * Tap a synced line to tell the app in plain words what it really is; it
+ * remembers that merchant for every past and future charge. One tap also
+ * removes a hand-logged entry. */
 export function SpendLogSheet({
-  open, onClose, cfg, onRemove,
-}: { open: boolean; onClose: () => void; cfg: MoneyConfig; onRemove: (id: string) => void }) {
+  open, onClose, cfg, onRemove, onReclassify,
+}: {
+  open: boolean; onClose: () => void; cfg: MoneyConfig;
+  onRemove: (id: string) => void;
+  onReclassify: (merchant: string, kind: MerchantRule["kind"] | "remove", category?: string) => void;
+}) {
   const entries = [...(cfg.spend ?? [])].sort((a, b) => b.date.localeCompare(a.date));
+  const [openId, setOpenId] = useState<string | null>(null);
+  const [pickCatFor, setPickCatFor] = useState<string | null>(null);
+  const ruleKeys = new Set((cfg.merchantRules ?? []).map((r) => merchantKeyFor(r.key)));
+  const isLearned = (merchant?: string) => !!merchant && ruleKeys.has(merchantKeyFor(merchant));
+
+  const choose = (merchant: string, kind: MerchantRule["kind"] | "remove", category?: string) => {
+    onReclassify(merchant, kind, category);
+    setOpenId(null);
+    setPickCatFor(null);
+  };
+
   return (
-    <Sheet open={open} onClose={onClose} title="What you've logged">
+    <Sheet open={open} onClose={onClose} title="Your spending">
       <div className="space-y-2 pb-2">
         {entries.length === 0 ? (
-          <p className="py-4 text-center text-sm text-fg/60">Nothing logged yet. When you log a purchase, it lives here — removable any time.</p>
+          <p className="py-4 text-center text-sm text-fg/60">Nothing here yet. Connect your bank and your purchases show up automatically — or log one by hand.</p>
         ) : (
-          entries.map((e) => (
-            <div key={e.id} className="glass flex items-center gap-3 p-3" style={{ borderRadius: 14 }}>
-              <div className="min-w-0 flex-1">
-                <div className="text-sm font-semibold">{e.category}{e.note ? <span className="font-normal text-fg/55"> · {e.note}</span> : null}</div>
-                <div className="text-[11px] text-fg/50">{e.date.slice(5).replace("-", "/")}</div>
+          entries.map((e) => {
+            const merchant = e.note || e.category;
+            const isBank = e.source === "bank";
+            const expanded = openId === e.id;
+            return (
+              <div key={e.id} className="glass p-3" style={{ borderRadius: 14 }}>
+                <div className="flex items-center gap-3">
+                  {/* Tap the line itself to fix what it is (synced lines only). */}
+                  <button
+                    className="min-w-0 flex-1 text-left disabled:cursor-default"
+                    disabled={!isBank}
+                    onClick={() => { setOpenId(expanded ? null : e.id); setPickCatFor(null); }}
+                    aria-label={isBank ? `Fix what "${merchant}" is` : undefined}
+                  >
+                    <div className="flex items-center gap-1.5 text-sm font-semibold">
+                      <span className="truncate">{merchant}</span>
+                      {isLearned(merchant) && <Check size={12} className="shrink-0 text-accent" aria-label="Remembered" />}
+                    </div>
+                    <div className="text-[11px] text-fg/50">
+                      {e.category} · {e.date.slice(5).replace("-", "/")}{isBank ? " · tap to fix" : ""}
+                    </div>
+                  </button>
+                  <div className="font-display text-[15px] font-bold tabnum">${Math.round(e.amount).toLocaleString()}</div>
+                  {!isBank && (
+                    <button
+                      className="grid h-8 w-8 shrink-0 place-items-center rounded-full bg-fg/6 text-fg/55 active:scale-95"
+                      onClick={() => onRemove(e.id)}
+                      aria-label={`Remove $${Math.round(e.amount)} ${e.category}`}
+                    >
+                      <X size={14} />
+                    </button>
+                  )}
+                </div>
+
+                {expanded && isBank && (
+                  <div className="mt-3 border-t border-fg/8 pt-3">
+                    {pickCatFor === e.id ? (
+                      <>
+                        <p className="mb-2 text-[12px] font-semibold text-fg/70">What kind of everyday spending?</p>
+                        <div className="flex flex-wrap gap-2">
+                          {SPEND_CATEGORIES.map((c) => (
+                            <button key={c} className="btn btn-ghost px-3 py-1.5 text-[13px]" onClick={() => choose(merchant, "everyday", c)}>{c}</button>
+                          ))}
+                        </div>
+                      </>
+                    ) : (
+                      <>
+                        <p className="mb-2 text-[12px] font-semibold text-fg/70">What is this, really?</p>
+                        <div className="grid grid-cols-1 gap-2">
+                          <button className="btn btn-ghost justify-start py-2 text-[13px]" onClick={() => setPickCatFor(e.id)}>🛒 Everyday spending</button>
+                          <button className="btn btn-ghost justify-start py-2 text-[13px]" onClick={() => choose(merchant, "bill")}>🧾 A bill</button>
+                          <button className="btn btn-ghost justify-start py-2 text-[13px]" onClick={() => choose(merchant, "debt")}>💳 Debt or loan payment</button>
+                          <button className="btn btn-ghost justify-start py-2 text-[13px]" onClick={() => choose(merchant, "ignore")}>🔄 Not spending — I just moved my money</button>
+                          {isLearned(merchant) && (
+                            <button className="btn btn-ghost justify-start py-2 text-[13px] text-fg/55" onClick={() => choose(merchant, "remove")}>↩︎ Back to automatic</button>
+                          )}
+                        </div>
+                        <p className="mt-2 text-[11px] text-fg/45">I&apos;ll remember {merchant} and fix every past and future charge.</p>
+                      </>
+                    )}
+                  </div>
+                )}
               </div>
-              <div className="font-display text-[15px] font-bold tabnum">${Math.round(e.amount).toLocaleString()}</div>
-              <button
-                className="grid h-8 w-8 shrink-0 place-items-center rounded-full bg-fg/6 text-fg/55 active:scale-95"
-                onClick={() => onRemove(e.id)}
-                aria-label={`Remove $${Math.round(e.amount)} ${e.category}`}
-              >
-                <X size={14} />
-              </button>
-            </div>
-          ))
+            );
+          })
         )}
-        <p className="px-1 pt-1 text-[11px] text-fg/45">Removing recalculates the budget, the ledger, and today&apos;s daily number instantly.</p>
+        <p className="px-1 pt-1 text-[11px] text-fg/45">Every change recalculates your budget, ledger, and today&apos;s number instantly.</p>
       </div>
     </Sheet>
   );

@@ -265,6 +265,20 @@ export const ILA_TOOLS = [
     },
   },
   {
+    name: "reclassify_spending",
+    description:
+      "Teach the app what a SYNCED bank merchant really is, so it's fixed for every past AND future charge (the app remembers). Use when they say a synced line is mislabeled — 'that Flexible Finance charge is my rent', 'Ford Credit is my car payment, not everyday', 'those transfers to myself aren't spending', 'file Costco under groceries'. kind: 'everyday' = real spending (optionally set category), 'bill' = a recurring bill, 'debt' = a loan/card payment, 'ignore' = not spending at all (a transfer between their own accounts), 'remove' = forget the rule and go back to automatic. Paying another PERSON still counts as everyday spending — only their own-account transfers are 'ignore'.",
+    input_schema: {
+      type: "object" as const,
+      properties: {
+        merchant: { type: "string", description: "The merchant name as it appears on the synced line (e.g. 'Flexible Finance', 'Ford Credit', 'Costco')." },
+        kind: { type: "string", enum: ["everyday", "bill", "debt", "ignore", "remove"], description: "What this merchant's charges really are." },
+        category: { type: "string", description: "For kind 'everyday' only: the bucket (Groceries, Gas, Dining, Shopping, Fun, Other)." },
+      },
+      required: ["merchant", "kind"],
+    },
+  },
+  {
     name: "evaluate_purchase",
     description:
       "Run the real can-I-afford-this math on a purchase the user is considering — the ONLY correct way to answer 'can I afford to spend $500 today?' / 'should I buy X'. The verdict is judged against their never-go-below floor across every projected day ahead (clear / tight / wait-for-the-check / no), plus what's left after, deals-of-work cost, and the month's low point. Never estimate this by hand — run it, then deliver the verdict in your own voice, straight.",

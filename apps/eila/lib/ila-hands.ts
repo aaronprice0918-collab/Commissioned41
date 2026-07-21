@@ -10,7 +10,7 @@ import { dealUnits, productDefs } from "./fni";
 import type { IlaToolCall } from "./ila-tools";
 import type { Bill, MoneyConfig, MoneyGoal } from "./money/types";
 import { defaultMoneyConfig } from "./money/types";
-import { addSpend, applyBankSync, budgetMonth, evaluatePurchase, incomeExpectation, removeSpend, resolvePaydays, upsertBudget, type BankSyncPayload } from "./money/engine";
+import { addSpend, applyBankSync, budgetMonth, evaluatePurchase, incomeExpectation, removeSpend, resolvePaydays, setMerchantRule, upsertBudget, type BankSyncPayload } from "./money/engine";
 import { forecast, localDayKey } from "./engine";
 import { parseLoggCsv } from "./loggImport";
 
@@ -557,6 +557,36 @@ export async function executeIlaTool(call: IlaToolCall, ctx: HandsCtx): Promise<
         return {
           content: `Removed — ${describe(gone)}. The budget, ledger, and daily number recalculated.${monthNote}`,
           friendly: `✓ Removed $${Math.round(gone.amount).toLocaleString()} ${gone.category}`,
+        };
+      }
+
+      case "reclassify_spending": {
+        const cfg = ctx.profile.money ?? defaultMoneyConfig();
+        const merchant = String(call.input.merchant ?? "").trim();
+        const kind = String(call.input.kind ?? "").trim() as "everyday" | "bill" | "debt" | "ignore" | "remove";
+        if (!merchant) return { content: "Which merchant? Give the name as it shows on the synced line.", isError: true };
+        if (!["everyday", "bill", "debt", "ignore", "remove"].includes(kind)) {
+          return { content: "kind must be one of: everyday, bill, debt, ignore, remove.", isError: true };
+        }
+        const category = typeof call.input.category === "string" && (call.input.category as string).trim() ? (call.input.category as string).trim() : undefined;
+        const now = new Date();
+        const next = setMerchantRule(cfg, merchant, kind, category, now.toISOString());
+        ctx.updateMoney(next);
+        const label =
+          kind === "remove" ? "back to automatic"
+          : kind === "everyday" ? `everyday spending${category ? ` (${category})` : ""}`
+          : kind === "ignore" ? "not spending — a transfer between their own accounts"
+          : kind === "bill" ? "a bill"
+          : "debt / a loan payment";
+        const bm = budgetMonth(next, now);
+        const monthNote = bm && bm.totalBudget > 0
+          ? bm.leftToSpend >= 0
+            ? ` Budget now: $${bm.leftToSpend.toLocaleString()} left to spend this month.`
+            : ` Budget now: $${Math.abs(bm.leftToSpend).toLocaleString()} over.`
+          : "";
+        return {
+          content: `Done — ${merchant} is now ${label}, applied to every past and future charge. I'll remember it.${monthNote}`,
+          friendly: `✓ ${merchant} → ${label}`,
         };
       }
 
