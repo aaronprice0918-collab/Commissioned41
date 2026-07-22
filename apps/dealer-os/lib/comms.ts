@@ -64,16 +64,45 @@ export function appendMessagePatch(lead: MessageCarrier, message: LeadMessage): 
   return { messages: [...(lead.messages ?? []), message] };
 }
 
-// Carrier-standard opt-out/opt-in keywords (Twilio's default list). A STOP
-// must revoke consent on the trail; a START re-grants. Anything else is just
-// a message.
-const STOP_WORDS = new Set(["stop", "stopall", "unsubscribe", "cancel", "end", "quit"]);
-const START_WORDS = new Set(["start", "unstop", "yes"]);
+// Opt-out / opt-in detection. TCPA is "revoke by ANY reasonable means," not just
+// the carrier keyword "STOP" — so an exact-keyword-only match let "please stop
+// texting me" / "remove me" slip through and the autonomous senders kept firing
+// at a customer who clearly opted out. We match the carrier keywords AND common
+// informal opt-out phrasings. We deliberately err toward suppressing: a false
+// revoke costs a lost contact; a missed revoke costs TCPA statutory damages.
+const STOP_WORDS = new Set(["stop", "stopall", "unsubscribe", "cancel", "end", "quit", "optout", "revoke"]);
+// Explicit opt-out phrasings (checked as substrings after stripping punctuation).
+// Kept specific so ordinary messages ("stop by later", "the deal fell through")
+// are NOT misread as opt-outs.
+const OPT_OUT_PHRASES = [
+  "stop texting", "stop contacting", "stop messaging", "stop calling", "stop sending",
+  "stop the text", "please stop", "stop please", "no more text", "no more messages",
+  "remove me", "take me off", "opt out", "opt-out", "unsubscribe", "do not text",
+  "dont text", "don't text", "do not contact", "dont contact", "don't contact",
+  "leave me alone", "quit texting", "lose my number", "delete my number", "wrong number",
+];
+// Explicit re-opt-in. "yes" is intentionally NOT here — a revoked customer
+// texting "yes" for any unrelated reason must never silently reopen consent;
+// re-granting requires a deliberate opt-in keyword. (Appointment "reply YES to
+// confirm" is a confirmation, not a consent grant, and is handled separately.)
+const START_WORDS = new Set(["start", "unstop", "continue", "resubscribe", "resume"]);
+
+/** Is this inbound an opt-out (revoke) by any reasonable means? */
+export function isOptOut(body: string): boolean {
+  const t = String(body || "").trim().toLowerCase();
+  if (!t) return false;
+  const firstWord = (t.split(/\s+/)[0] || "").replace(/[^a-z]/g, "");
+  if (STOP_WORDS.has(firstWord)) return true; // "STOP", "STOP.", "cancel please"
+  // Strip apostrophes first (so "don't" -> "dont"), then collapse other
+  // punctuation to spaces, so phrasing matches regardless of typography.
+  const compact = t.replace(/['’]/g, "").replace(/[^a-z\s]/g, " ").replace(/\s+/g, " ").trim();
+  return OPT_OUT_PHRASES.some((p) => compact.includes(p));
+}
 
 export function inboundConsentEvent(body: string, at: string): ConsentEvent | null {
-  const word = String(body || "").trim().toLowerCase();
-  if (STOP_WORDS.has(word)) return { channel: "text", action: "revoked", at, source: "STOP reply" };
-  if (START_WORDS.has(word)) return { channel: "text", action: "granted", at, source: "START reply" };
+  const word = String(body || "").trim().toLowerCase().replace(/[^a-z]/g, "");
+  if (isOptOut(body)) return { channel: "text", action: "revoked", at, source: "opt-out reply" };
+  if (START_WORDS.has(word)) return { channel: "text", action: "granted", at, source: "opt-in reply" };
   return null;
 }
 

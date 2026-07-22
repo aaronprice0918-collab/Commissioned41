@@ -5,7 +5,7 @@ import { loadBrainLessons, renderBrain } from "@commissioned41/ila-core/brain";
 import { loadUserMemory, reflectUserMemory, renderUserMemory } from "@/lib/ila-user-memory";
 import { rateLimit, clientKey, tooManyRequests } from "@/lib/rateLimit";
 import { resolveCaller, storeContext, leadToContext, loadStoreData, buildSnapshot, type EILAContext } from "./_context";
-import { DEALER_PROMPT, COACHING_PROMPT } from "./_prompts";
+import { DEALER_PROMPT } from "./_prompts";
 import { callClaude, callEILAChat, streamEILAChat, resolveLead } from "./_claude";
 
 export const dynamic = "force-dynamic";

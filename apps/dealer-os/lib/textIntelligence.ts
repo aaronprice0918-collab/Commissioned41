@@ -19,17 +19,28 @@ const WARM_PATTERNS = [
   /\b(maybe|possibly|thinking|consider|tell me more|what'?s the|how much|price|payment|details)\b/i,
   /\b(not sure yet|need to think|talk to|check with)\b/i,
 ];
+// COLD kept SPECIFIC — the old version matched bare "don't|won't|can't", which
+// scored "can't wait!" (hot enthusiasm) as cold. These are explicit rejections.
 const COLD_PATTERNS = [
-  /\b(no thanks|not interested|no thank you|pass|don'?t|won'?t|can'?t|already bought|went somewhere|elsewhere|not right now|stop contacting)\b/i,
+  /\b(no thanks?|no thank you|not interested|not (ready|looking|buying)|already (bought|purchased|got one)|went (somewhere|elsewhere)|elsewhere|not right now|changed my mind|do ?n'?t want|wo ?n'?t be|stop contacting|no longer)\b/i,
   /\b(too expensive|too much|can'?t afford|out of.*(budget|range))\b/i,
 ];
+// A positive keyword negated is a rejection: "not interested", "no longer
+// interested", "don't want to come in". Checked FIRST so HOT's bare
+// "\binterested\b" can't fire on "not interested" (the original bug: a customer
+// saying "not interested" was scored HOT and the rep got nudged to pounce).
+const NEGATED_POSITIVE =
+  /\b(not|no longer|isn'?t|are ?n'?t|wo ?n'?t|do ?n'?t|ca ?n'?t|never)\b[^.!?]{0,20}\b(interested|ready|want|buy|buying|coming|come in|going to)\b/i;
 const STOP_WORDS = new Set(["stop", "stopall", "unsubscribe", "cancel", "end", "quit"]);
 
 export function scoreSentiment(body: string): { label: SentimentLabel; confidence: number } {
   const text = String(body || "").trim().toLowerCase();
   if (STOP_WORDS.has(text)) return { label: "stop", confidence: 1.0 };
-  if (HOT_PATTERNS.some((p) => p.test(text))) return { label: "hot", confidence: 0.85 };
+  // Rejections win over positives: negated-positive and explicit cold BEFORE hot,
+  // so "not interested" / "no longer looking" never read as hot.
+  if (NEGATED_POSITIVE.test(text)) return { label: "cold", confidence: 0.85 };
   if (COLD_PATTERNS.some((p) => p.test(text))) return { label: "cold", confidence: 0.8 };
+  if (HOT_PATTERNS.some((p) => p.test(text))) return { label: "hot", confidence: 0.85 };
   if (WARM_PATTERNS.some((p) => p.test(text))) return { label: "warm", confidence: 0.7 };
   return { label: "neutral", confidence: 0.5 };
 }

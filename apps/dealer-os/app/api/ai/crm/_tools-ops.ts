@@ -15,7 +15,7 @@ import { consentStatus, suppressionDeadline } from "@/lib/consent";
 import { isOpenLead, scoreLead } from "@/lib/leadScore";
 import { makeScheduledTextId, scheduledLine, cancel as cancelScheduled, type ScheduledText } from "@/lib/scheduledTexts";
 import { startCadence, cadenceSteps, cadenceSummary, pauseCadence, CADENCE_TEMPLATES, type CadenceTemplate, type CadenceState } from "@/lib/followUpCadence";
-import { responseMetrics, repTextAnalytics, textNudges, scoreSentiment } from "@/lib/textIntelligence";
+import { responseMetrics, repTextAnalytics, textNudges } from "@/lib/textIntelligence";
 
 
 // group_report — the multi-rooftop rollup (lib/groupReport.ts, same brain as

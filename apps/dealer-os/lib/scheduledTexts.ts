@@ -5,7 +5,7 @@
 // as `scheduledTexts` (same JSONB-array pattern as everything else).
 
 export type ScheduledText = {
-  id: string; // ST-<ms>
+  id: string; // ST-<ms>-<rand> — globally unique (see makeScheduledTextId)
   leadId: string;
   body: string;
   scheduledAt: string; // ISO — when to fire
@@ -18,7 +18,12 @@ export type ScheduledText = {
 };
 
 export function makeScheduledTextId(): string {
-  return `ST-${Date.now()}`;
+  // Date.now() alone collides when a broadcast schedules many texts in the same
+  // millisecond (a synchronous .map over recipients) — every recipient got the
+  // SAME id, so the cron's id-based retire marked only the first "sent" and
+  // re-fired the rest every minute (mass duplicate texts). A random suffix makes
+  // each id globally unique so every scheduled text is retired independently.
+  return `ST-${Date.now()}-${Math.random().toString(36).slice(2, 10)}`;
 }
 
 /** Texts whose scheduled time has arrived or passed and haven't been fired. */
@@ -40,6 +45,15 @@ export function markFailed(t: ScheduledText, error: string): ScheduledText {
 /** Cancel a pending text — returns the patched copy, never mutates. */
 export function cancel(t: ScheduledText): ScheduledText {
   return { ...t, status: "cancelled" };
+}
+
+/** Drop terminal-state (sent/failed/cancelled) texts older than `days`.
+ * `pending` is always kept. The array is read every minute by the cron AND
+ * loaded into EILA's context on every AI request, so without pruning a few big
+ * broadcasts bloat read latency and token cost forever. Applied on every write. */
+export function pruneTerminal(texts: ScheduledText[], days = 30, now = new Date()): ScheduledText[] {
+  const cutoff = new Date(now.getTime() - days * 86_400_000).toISOString();
+  return texts.filter((t) => t.status === "pending" || (t.sentAt ?? t.createdAt) >= cutoff);
 }
 
 /** Summary line for EILA. */
