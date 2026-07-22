@@ -5,7 +5,7 @@ import { twilioConfigured } from "@/lib/twilio";
 import { consentStatus } from "@/lib/consent";
 import { textRevokedAnywhere } from "@/lib/comms";
 import { cadenceSteps, advanceCadence, type CadenceState } from "@/lib/followUpCadence";
-import { makeScheduledTextId, type ScheduledText } from "@/lib/scheduledTexts";
+import { makeScheduledTextId, pruneTerminal, type ScheduledText } from "@/lib/scheduledTexts";
 import { guardedMutate } from "@/lib/storeServer";
 
 // Follow-Up Cadence Processor — runs every hour. For each active cadence whose
@@ -87,66 +87,63 @@ export async function GET(req: Request) {
 
   for (const row of leadRows ?? []) {
     const orgId = String(row.org_id);
-    const leads: any[] = Array.isArray(row.value) ? row.value : [];
+    const leadsSnapshot: any[] = Array.isArray(row.value) ? row.value : [];
     const settings = settingsMap.get(orgId) ?? {};
     const storeName = settings.storeName || "the dealership";
 
-    const leadsToProcess: { lead: any; cadence: CadenceState }[] = [];
+    // Fast skip: nothing due in the snapshot. (The mutator below still re-checks
+    // against fresh data — this is only to avoid a needless write.)
+    if (!leadsSnapshot.some((l) => l?.cadence?.status === "active" && l.cadence.nextFireAt <= nowIso)) continue;
 
-    for (const lead of leads) {
-      const cadence: CadenceState | undefined = lead.cadence;
-      if (!cadence || cadence.status !== "active") continue;
-      if (cadence.nextFireAt > nowIso) continue; // not time yet
-
-      // Consent check
-      if (consentStatus(lead, "text") !== "granted" || textRevokedAnywhere(leads, String(lead.customerPhone || ""))) {
-        skipped++;
-        continue;
-      }
-
-      leadsToProcess.push({ lead, cadence });
-    }
-
-    if (!leadsToProcess.length) continue;
-
-    // Draft and enqueue each step, then advance the cadence on the lead
-    const scheduledTexts: ScheduledText[] = [];
-
-    // Use guardedMutate to safely update the leads with advanced cadences
+    // The mutator MUST be pure/re-runnable (guardedMutate re-runs it on a CAS
+    // conflict). The original pushed to an outer array and did queued++ INSIDE
+    // it, so a retry enqueued duplicate texts; and it advanced a STALE cadence
+    // captured before the read, clobbering an auto-pause written by an inbound
+    // reply in between. Here everything is decided from the FRESH `l.cadence`,
+    // and the drafted batch + counters are REASSIGNED each run (never
+    // accumulated), so they reflect exactly the committed result.
+    let drafted: ScheduledText[] = [];
+    let skippedThisOrg = 0;
     await guardedMutate<any[]>(supabase, orgId, "crmLeads", (currentLeads) => {
       const current = currentLeads ?? [];
-      return current.map((l: any) => {
-        const match = leadsToProcess.find((p) => String(p.lead.id) === String(l?.id));
-        if (!match) return l;
-
-        const steps = cadenceSteps(match.cadence);
-        const step = steps[match.cadence.currentStep];
-        if (!step) return { ...l, cadence: { ...match.cadence, status: "completed" } };
-
-        // Draft the message
+      const batch: ScheduledText[] = [];
+      let sk = 0;
+      const next = current.map((l: any) => {
+        const cadence: CadenceState | undefined = l?.cadence;
+        if (!cadence || cadence.status !== "active" || cadence.nextFireAt > nowIso) return l;
+        // Consent re-checked on FRESH data — a revoke/STOP since our snapshot wins.
+        if (consentStatus(l, "text") !== "granted" || textRevokedAnywhere(current, String(l.customerPhone || ""))) {
+          sk++;
+          return l; // leave the cadence active; it'll be caught again next hour if consent returns
+        }
+        const steps = cadenceSteps(cadence);
+        const step = steps[cadence.currentStep];
+        if (!step) return { ...l, cadence: { ...cadence, status: "completed" } };
         const body = draftFromIntent(step.intent, l, storeName);
-
-        // Enqueue as a scheduled text (fires on the next minute)
-        scheduledTexts.push({
+        batch.push({
           id: makeScheduledTextId(),
           leadId: String(l.id),
           body,
           scheduledAt: nowIso,
           createdAt: nowIso,
-          createdBy: match.cadence.startedBy,
+          createdBy: cadence.startedBy,
           status: "pending",
         });
-
-        queued++;
-        return { ...l, cadence: advanceCadence(match.cadence) };
+        return { ...l, cadence: advanceCadence(cadence) };
       });
+      drafted = batch;
+      skippedThisOrg = sk;
+      return next;
     });
+    queued += drafted.length;
+    skipped += skippedThisOrg;
 
-    // Append the drafted texts to the org's scheduledTexts store
-    if (scheduledTexts.length) {
-      await guardedMutate<ScheduledText[]>(supabase, orgId, "scheduledTexts", (current) => {
-        return [...(current ?? []), ...scheduledTexts];
-      });
+    // Enqueue the drafted texts (fire on the next minute via scheduled-texts),
+    // pruning terminal history in the same write.
+    if (drafted.length) {
+      await guardedMutate<ScheduledText[]>(supabase, orgId, "scheduledTexts", (current) =>
+        pruneTerminal([...(current ?? []), ...drafted], 30, now),
+      );
     }
   }
 

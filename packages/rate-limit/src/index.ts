@@ -61,7 +61,11 @@ export async function rateLimit(
     });
     if (!res.ok) return memoryLimit(identifier, limit, windowSec);
     const data = (await res.json()) as Array<{ result?: number }>;
-    const count = Number(data?.[0]?.result ?? 0);
+    const count = Number(data?.[0]?.result);
+    // A 200 with an unexpected body shape must NOT read as count=0 (which would
+    // make ok=true forever — a silent fail-open). Treat a non-numeric result as
+    // a backend failure and fall back to the bounded in-memory limiter.
+    if (!Number.isFinite(count)) return memoryLimit(identifier, limit, windowSec);
     return { ok: count <= limit, remaining: Math.max(0, limit - count), limit };
   } catch {
     return memoryLimit(identifier, limit, windowSec);

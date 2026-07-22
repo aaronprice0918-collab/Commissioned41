@@ -4,6 +4,7 @@ import {
   OPT_OUT_NOTICE,
   appendMessagePatch,
   inboundConsentEvent,
+  isOptOut,
   matchLeadByPhone,
   normalizePhone,
   samePhone,
@@ -50,7 +51,10 @@ test("inboundConsentEvent: STOP-family revokes, START-family re-grants, chatter 
   assert.equal(inboundConsentEvent("Stop", at)?.channel, "text");
   assert.equal(inboundConsentEvent("START", at)?.action, "granted");
   assert.equal(inboundConsentEvent("what time do you close?", at), null);
-  assert.equal(inboundConsentEvent("please stop calling me", at), null); // sentence ≠ keyword; humans read those
+  // Revoke-by-ANY-reasonable-means (TCPA): informal opt-outs must now revoke,
+  // not be silently ignored (the old behavior let the autonomous senders keep
+  // firing at someone who clearly opted out).
+  assert.equal(inboundConsentEvent("please stop calling me", at)?.action, "revoked");
 });
 
 test("textRevokedAnywhere: a revoke on ANY lead sharing the phone blocks the number", () => {
@@ -72,4 +76,28 @@ test("matchLeadByPhone: newest matching lead wins, no match is null", () => {
   ];
   assert.equal(matchLeadByPhone(leads, "+17705550101")?.id, "CRM-1750000000000");
   assert.equal(matchLeadByPhone(leads, "555-0000"), null);
+});
+
+test("isOptOut: informal opt-outs count, ordinary messages do not", () => {
+  for (const body of [
+    "please stop texting me", "Please stop", "remove me from your list",
+    "take me off this", "do not text me again", "don't text me",
+    "quit texting me", "leave me alone", "lose my number", "STOP",
+  ]) {
+    assert.equal(isOptOut(body), true, `"${body}" should opt out`);
+  }
+  for (const body of [
+    "I'll stop by later today", "the deal fell through",
+    "can you send me the price?", "yes I'm interested, when can I come in?",
+  ]) {
+    assert.equal(isOptOut(body), false, `"${body}" should NOT opt out`);
+  }
+});
+
+test('"yes" NEVER re-grants consent — a revoked customer saying yes must not reopen', () => {
+  assert.equal(inboundConsentEvent("yes", "t"), null);
+  assert.equal(inboundConsentEvent("Yes please", "t"), null);
+  assert.equal(inboundConsentEvent("YES", "t"), null);
+  // but a deliberate opt-in keyword still works
+  assert.equal(inboundConsentEvent("continue", "t")?.action, "granted");
 });

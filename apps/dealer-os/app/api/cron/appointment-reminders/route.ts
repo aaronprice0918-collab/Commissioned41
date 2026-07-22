@@ -4,21 +4,45 @@ import { cronAuthorized } from "@/lib/securityLog";
 import { sendTextToLead } from "@/lib/smsServer";
 import { twilioConfigured } from "@/lib/twilio";
 import { consentStatus } from "@/lib/consent";
-import { samePhone } from "@/lib/comms";
+import { textRevokedAnywhere } from "@/lib/comms";
+import { guardedMutate } from "@/lib/storeServer";
 
-// Appointment Reminders — runs daily at 6pm ET (configurable via Vercel cron).
-// Finds every lead with a confirmed or unconfirmed appointment TOMORROW, checks
-// text consent, and sends a personalized reminder. Inbound YES/NO replies are
-// handled by the existing webhook (appointment confirmation updates happen via
-// the EILA tool or manually — this just sends the reminder).
+// Appointment Reminders — runs daily (Vercel cron). Finds every lead with an
+// appointment TOMORROW, checks text consent, and sends a personalized reminder.
 //
-// Guard: only fires when Twilio is configured. Consent-gated per lead.
-// Idempotent: each lead is checked against `lead.lastReminderAt` to avoid
-// double-sends if the cron fires twice.
+// Idempotency: each due lead is CLAIMED (stamp lastReminderAt) atomically via
+// CAS BEFORE the send, so an overlapping/retried run can't double-text — and the
+// stamp write no longer blind-clobbers concurrent CRM edits (the original used a
+// non-CAS .update). Times are rendered in the STORE timezone, not the server's
+// UTC (which told customers the wrong hour for instant-valued appointments).
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 export const maxDuration = 60;
+
+const STORE_TZ = "America/New_York"; // launch market; per-store tz is a future add
+
+/** YYYY-MM-DD for `d` as seen in `tz`. */
+function ymdInTz(d: Date, tz = STORE_TZ): string {
+  return new Intl.DateTimeFormat("en-CA", { timeZone: tz, year: "numeric", month: "2-digit", day: "2-digit" }).format(d);
+}
+
+/** Human time label for an appointment value. An explicit instant (…Z / +hh:mm)
+ * is converted to the store tz; a naive "YYYY-MM-DDTHH:mm" is shown as written
+ * (its wall-clock), never UTC-shifted. */
+function apptTimeLabel(appointment: string, tz = STORE_TZ): string {
+  const s = String(appointment);
+  if (!s.includes("T")) return "your scheduled time";
+  if (/[zZ]|[+-]\d{2}:?\d{2}$/.test(s)) {
+    return new Date(s).toLocaleTimeString("en-US", { timeZone: tz, hour: "numeric", minute: "2-digit" });
+  }
+  const m = /T(\d{2}):(\d{2})/.exec(s);
+  if (!m) return "your scheduled time";
+  let h = Number(m[1]);
+  const ampm = h >= 12 ? "PM" : "AM";
+  h = h % 12 || 12;
+  return `${h}:${m[2]} ${ampm}`;
+}
 
 export async function GET(req: Request) {
   if (!cronAuthorized(req, "cron/appointment-reminders")) {
@@ -31,80 +55,61 @@ export async function GET(req: Request) {
   const supabase = getSupabaseServerClient();
   if (!supabase) return NextResponse.json({ error: "Service role not configured." }, { status: 503 });
 
-  // Scan every org's leads for tomorrow's appointments.
-  const { data: orgRows } = await supabase.from("app_store").select("org_id, value, updated_at").eq("key", "crmLeads");
+  const { data: orgRows } = await supabase.from("app_store").select("org_id, value").eq("key", "crmLeads");
   const { data: settingsRows } = await supabase.from("app_store").select("org_id, value").eq("key", "storeSettings");
   const settingsMap = new Map<string, any>((settingsRows ?? []).map((r: any) => [String(r.org_id), r.value]));
 
-  // Tomorrow's date in the store's timezone (default ET).
-  const tomorrow = new Date();
-  tomorrow.setDate(tomorrow.getDate() + 1);
-  const tomorrowStr = tomorrow.toISOString().slice(0, 10);
+  const now = new Date();
+  const nowIso = now.toISOString();
+  const todayStr = ymdInTz(now);
+  const tomorrowStr = ymdInTz(new Date(now.getTime() + 86_400_000));
 
   let sent = 0;
   let skipped = 0;
 
   for (const row of orgRows ?? []) {
     const orgId = String(row.org_id);
-    const leads: any[] = Array.isArray(row.value) ? row.value : [];
+    const leadsSnapshot: any[] = Array.isArray(row.value) ? row.value : [];
     const settings = settingsMap.get(orgId) ?? {};
     const storeName = settings.storeName || "the dealership";
 
-    for (const lead of leads) {
-      if (!lead.appointment || lead.status === "Lost" || lead.status === "Won") continue;
+    const dueInSnapshot = leadsSnapshot.some(
+      (l) => l?.appointment && l.status !== "Lost" && l.status !== "Won" && String(l.appointment).slice(0, 10) === tomorrowStr,
+    );
+    if (!dueInSnapshot) continue;
 
-      // Check if appointment is tomorrow
-      const apptDate = String(lead.appointment).slice(0, 10);
-      if (apptDate !== tomorrowStr) continue;
+    // CLAIM every due-and-consented, not-yet-reminded lead by stamping
+    // lastReminderAt (CAS, re-checks fresh data). Capture them for the send.
+    let toRemind: any[] = [];
+    let consentSkipped = 0;
+    await guardedMutate<any[]>(supabase, orgId, "crmLeads", (currentLeads) => {
+      const current = currentLeads ?? [];
+      const claimed: any[] = [];
+      let cs = 0;
+      const next = current.map((l: any) => {
+        if (!l?.appointment || l.status === "Lost" || l.status === "Won") return l;
+        if (String(l.appointment).slice(0, 10) !== tomorrowStr) return l;
+        if (l.lastReminderAt && ymdInTz(new Date(l.lastReminderAt)) === todayStr) return l; // already reminded today
+        if (consentStatus(l, "text") !== "granted" || textRevokedAnywhere(current, String(l.customerPhone || ""))) { cs++; return l; }
+        claimed.push(l);
+        return { ...l, lastReminderAt: nowIso };
+      });
+      toRemind = claimed;
+      consentSkipped = cs;
+      return next;
+    });
+    skipped += consentSkipped;
 
-      // Check consent
-      if (consentStatus(lead, "text") !== "granted") {
-        skipped++;
-        continue;
-      }
-
-      // Idempotency: don't send if we already reminded today
-      if (lead.lastReminderAt && String(lead.lastReminderAt).slice(0, 10) === new Date().toISOString().slice(0, 10)) {
-        skipped++;
-        continue;
-      }
-
-      // Build the reminder message
-      const time = String(lead.appointment).includes("T")
-        ? new Date(lead.appointment).toLocaleTimeString("en-US", { hour: "numeric", minute: "2-digit" })
-        : "your scheduled time";
+    for (const lead of toRemind) {
       const rep = lead.salesperson || "your sales consultant";
       const vehicle = lead.vehicle ? ` about the ${lead.vehicle}` : "";
-      const body = `Hi ${(lead.customer || "").split(" ")[0] || "there"}, just a reminder about your ${time} appointment tomorrow at ${storeName}${vehicle} with ${rep}. Reply YES to confirm or call us if you need to reschedule!`;
+      const body = `Hi ${(lead.customer || "").split(" ")[0] || "there"}, just a reminder about your ${apptTimeLabel(lead.appointment)} appointment tomorrow at ${storeName}${vehicle} with ${rep}. Reply YES to confirm or call us if you need to reschedule!`;
 
       const result = await sendTextToLead({
-        supabase,
-        orgId,
-        leadId: String(lead.id),
-        body,
-        senderName: storeName,
-        role: "Admin", // cron runs as admin — bypasses own-customer restriction
+        supabase, orgId, leadId: String(lead.id), body, senderName: storeName, role: "Admin",
       });
-
-      if (result.ok) {
-        sent++;
-        // Stamp the reminder so we don't double-send. This is a lightweight
-        // write — the full CAS loop in smsServer already bumped the row, so
-        // this is just a metadata patch on the lead.
-        const { data: freshRow } = await supabase
-          .from("app_store").select("value, updated_at").eq("org_id", orgId).eq("key", "crmLeads").maybeSingle();
-        const freshLeads: any[] = Array.isArray(freshRow?.value) ? freshRow.value : [];
-        const patched = freshLeads.map((l: any) =>
-          String(l?.id) === String(lead.id)
-            ? { ...l, lastReminderAt: new Date().toISOString() }
-            : l
-        );
-        await supabase.from("app_store").update({ value: patched, updated_at: new Date().toISOString() })
-          .eq("org_id", orgId).eq("key", "crmLeads");
-      } else {
-        console.warn(`[appointment-reminders] failed for ${lead.id}: ${result.error}`);
-        skipped++;
-      }
+      if (result.ok) sent++;
+      else { skipped++; console.warn(`[appointment-reminders] failed for ${lead.id}: ${result.error}`); }
     }
   }
 

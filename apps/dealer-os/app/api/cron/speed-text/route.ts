@@ -4,6 +4,8 @@ import { cronAuthorized } from "@/lib/securityLog";
 import { sendTextToLead } from "@/lib/smsServer";
 import { twilioConfigured } from "@/lib/twilio";
 import { consentStatus } from "@/lib/consent";
+import { textRevokedAnywhere } from "@/lib/comms";
+import { guardedMutate } from "@/lib/storeServer";
 
 // Speed-to-Lead Auto-Text — runs every 1 minute (Vercel cron). Finds New Leads
 // that arrived in the last 5 minutes with text consent granted and no prior
@@ -41,76 +43,61 @@ export async function GET(req: Request) {
   let sent = 0;
   let skipped = 0;
 
+  const nowIso = now.toISOString();
+
+  // Is this lead a fresh (<5 min) New Lead eligible for a first-contact text?
+  const eligible = (lead: any): boolean => {
+    if (lead?.status !== "New Lead" || !lead.customerPhone) return false;
+    if (lead.speedTextSent) return false;
+    const msgs: any[] = lead.messages ?? [];
+    if (msgs.some((m: any) => m.dir === "out")) return false; // already contacted
+    const idMatch = /^CRM-(\d{12,})$/.exec(lead.id || "");
+    const createdAt = lead.date
+      ? new Date(lead.date).toISOString()
+      : idMatch ? new Date(Number(idMatch[1])).toISOString() : null;
+    return !!createdAt && createdAt >= fiveMinAgo && createdAt <= nowIso;
+  };
+
   for (const row of orgRows ?? []) {
     const orgId = String(row.org_id);
-    const leads: any[] = Array.isArray(row.value) ? row.value : [];
+    const leadsSnapshot: any[] = Array.isArray(row.value) ? row.value : [];
     const settings = settingsMap.get(orgId) ?? {};
     const storeName = settings.storeName || "the dealership";
 
-    for (const lead of leads) {
-      // Only target New Leads — they just arrived
-      if (lead.status !== "New Lead") continue;
-      if (!lead.customerPhone) continue;
+    if (!leadsSnapshot.some(eligible)) continue;
 
-      // Check the lead's creation time — must be within last 5 minutes.
-      // CRM-<ms> IDs encode creation time.
-      const idMatch = /^CRM-(\d{12,})$/.exec(lead.id || "");
-      const createdAt = lead.date
-        ? new Date(lead.date).toISOString()
-        : idMatch ? new Date(Number(idMatch[1])).toISOString() : null;
-      if (!createdAt || createdAt < fiveMinAgo || createdAt > now.toISOString()) {
-        continue; // too old or no creation time
-      }
+    // CLAIM every eligible lead by stamping speedTextSent BEFORE sending, via CAS
+    // on fresh data — so two overlapping cron ticks can't both first-contact the
+    // same lead, and the stamp no longer blind-clobbers a concurrent CRM edit.
+    let toText: any[] = [];
+    let consentSkipped = 0;
+    await guardedMutate<any[]>(supabase, orgId, "crmLeads", (currentLeads) => {
+      const current = currentLeads ?? [];
+      const claimed: any[] = [];
+      let cs = 0;
+      const next = current.map((l: any) => {
+        if (!eligible(l)) return l;
+        if (consentStatus(l, "text") !== "granted" || textRevokedAnywhere(current, String(l.customerPhone || ""))) { cs++; return l; }
+        claimed.push(l);
+        return { ...l, speedTextSent: true };
+      });
+      toText = claimed;
+      consentSkipped = cs;
+      return next;
+    });
+    skipped += consentSkipped;
 
-      // Only if no outbound text has been sent yet
-      const msgs: any[] = lead.messages ?? [];
-      if (msgs.some((m: any) => m.dir === "out")) {
-        skipped++;
-        continue;
-      }
-
-      // Check text consent
-      if (consentStatus(lead, "text") !== "granted") {
-        skipped++;
-        continue;
-      }
-
-      // Idempotency: skip if already stamped by a previous cron run
-      if (lead.speedTextSent) {
-        skipped++;
-        continue;
-      }
-
-      // Build the first-contact text
+    for (const lead of toText) {
       const firstName = (lead.customer || "").split(" ")[0] || "there";
       const rep = lead.salesperson || "our team";
       const vehicle = lead.vehicle ? `the ${lead.vehicle}` : "a vehicle";
       const body = `Hi ${firstName}! Thanks for your interest in ${vehicle}. This is ${rep} at ${storeName}. I'd love to help — feel free to text back or call me directly. When would be a good time for you to come take a look?`;
 
       const result = await sendTextToLead({
-        supabase,
-        orgId,
-        leadId: String(lead.id),
-        body,
-        senderName: lead.salesperson || "EILA",
-        role: "Admin",
+        supabase, orgId, leadId: String(lead.id), body, senderName: lead.salesperson || "EILA", role: "Admin",
       });
-
-      if (result.ok) {
-        sent++;
-        // Stamp so we don't re-send on the next cron tick
-        const { data: freshRow } = await supabase
-          .from("app_store").select("value, updated_at").eq("org_id", orgId).eq("key", "crmLeads").maybeSingle();
-        const freshLeads: any[] = Array.isArray(freshRow?.value) ? freshRow.value : [];
-        const patched = freshLeads.map((l: any) =>
-          String(l?.id) === String(lead.id) ? { ...l, speedTextSent: true } : l
-        );
-        await supabase.from("app_store").update({ value: patched, updated_at: new Date().toISOString() })
-          .eq("org_id", orgId).eq("key", "crmLeads");
-      } else {
-        console.warn(`[speed-text] failed for ${lead.id}: ${result.error}`);
-        skipped++;
-      }
+      if (result.ok) sent++;
+      else { skipped++; console.warn(`[speed-text] failed for ${lead.id}: ${result.error}`); }
     }
   }
 

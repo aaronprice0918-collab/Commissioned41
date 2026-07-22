@@ -79,13 +79,31 @@ export function cadenceSteps(state: CadenceState): CadenceStep[] {
   return CADENCE_TEMPLATES[state.template as keyof typeof CADENCE_TEMPLATES]?.steps ?? [];
 }
 
-/** Calculate when the next step fires based on the cadence start and step day offset. */
-export function nextFireTime(startedAt: string, step: CadenceStep): string {
-  const start = new Date(startedAt);
-  start.setDate(start.getDate() + step.day);
-  // Fire at 10am local — the customer's morning, not 3am.
-  start.setHours(10, 0, 0, 0);
-  return start.toISOString();
+// The store's timezone for "fire at 10am the customer's morning." Defaults to
+// Eastern (the launch market). setHours() runs in the SERVER tz, which is UTC on
+// Vercel — so the old code fired at 10:00 UTC ≈ 5–6am ET, the exact pre-dawn
+// text it was trying to avoid. We anchor 10am in this zone instead.
+const STORE_TZ = "America/New_York";
+
+/** The UTC instant that is `hour`:00 local time, in `tz`, on the local calendar
+ * day of `base`. Uses the format-offset trick so DST is handled for that date. */
+function atLocalHour(base: Date, hour: number, tz = STORE_TZ): Date {
+  const parts = new Intl.DateTimeFormat("en-CA", {
+    timeZone: tz, year: "numeric", month: "2-digit", day: "2-digit",
+  }).formatToParts(base);
+  const get = (t: string) => Number(parts.find((p) => p.type === t)?.value);
+  const guess = new Date(Date.UTC(get("year"), get("month") - 1, get("day"), hour, 0, 0));
+  // Offset between UTC and tz at `guess` (ms): tz-local reading minus UTC reading.
+  const asTz = new Date(guess.toLocaleString("en-US", { timeZone: tz })).getTime();
+  const asUtc = new Date(guess.toLocaleString("en-US", { timeZone: "UTC" })).getTime();
+  return new Date(guess.getTime() + (asUtc - asTz));
+}
+
+/** Calculate when the next step fires based on the cadence start and step day
+ * offset — anchored at 10am in the store's timezone, not the server's (UTC). */
+export function nextFireTime(startedAt: string, step: CadenceStep, tz = STORE_TZ): string {
+  const dayShifted = new Date(new Date(startedAt).getTime() + step.day * 86_400_000);
+  return atLocalHour(dayShifted, 10, tz).toISOString();
 }
 
 /** Create a fresh cadence state to attach to a lead. */
