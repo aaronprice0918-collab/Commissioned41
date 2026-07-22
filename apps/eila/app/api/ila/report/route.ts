@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { rateLimited } from "@/lib/rateLimit";
-import { getSessionEmail, hasActiveSubscription } from "@/lib/entitlement";
+import { getSessionEmail, hasActiveSubscription, isOwner, isCompEmail } from "@/lib/entitlement";
 import { notifyFailure } from "@/lib/alert";
 
 // EILA's direct line to Aaron's team — when she can't fix something herself
@@ -19,18 +19,24 @@ export async function POST(req: Request) {
   const email = await getSessionEmail(token);
   if (!email) return NextResponse.json({ error: "Sign in required." }, { status: 401 });
 
-  // Gate on an active subscription like every other EILA route — otherwise a
-  // burst of throwaway (never-subscribed) accounts could pipe attacker-controlled
-  // text straight into the operator's Slack/Discord alert channel. The per-email
-  // rate limit alone doesn't stop that because it's per-account.
-  let active = false;
-  try {
-    active = await hasActiveSubscription(email);
-  } catch (e) {
-    console.error("[ila/report] subscription check failed:", e);
-    active = false;
+  // Anti-abuse gate: a burst of throwaway (never-subscribed) accounts could
+  // otherwise pipe attacker-controlled text straight into the operator's
+  // Slack/Discord alert channel (the per-email rate limit alone doesn't stop
+  // that). BUT the owner and comped/team accounts are always allowed — they're
+  // us, or people we've granted access — so a legit member (or Aaron himself)
+  // is never gagged from filing a report. Only random unsubscribed accounts are
+  // blocked. (Bug fix: the old gate required an active subscription for
+  // EVERYONE, so the owner's own reports 402'd and silently never reached Slack.)
+  let allowed = isOwner(email) || isCompEmail(email);
+  if (!allowed) {
+    try {
+      allowed = (await hasActiveSubscription(email)) === true;
+    } catch (e) {
+      console.error("[ila/report] subscription check failed:", e);
+      allowed = false;
+    }
   }
-  if (!active && IS_PROD) {
+  if (!allowed && IS_PROD) {
     return NextResponse.json({ error: "Subscription required." }, { status: 402 });
   }
 
