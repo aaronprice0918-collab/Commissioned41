@@ -211,20 +211,25 @@ export function followUpQueue(deals: Deal[], now = new Date(), timeZone?: string
   return { overdue, dueToday, goingCold, scheduled, needsYou: overdue.length + dueToday.length + goingCold.length };
 }
 
+// Deals that count toward F&I PAY and its per-car averages (PVR / PPU). An F&I
+// back-end grid pays on RETAIL cars only — a no-qualify (DNQ / house) deal
+// carries $0 F&I and is NOT an F&I-retailed unit, so it must never sit in the
+// PVR/PPU denominator (it drags the average and desyncs every screen: pay card
+// $1,733 vs a board's $1,580). Non-grid (sales) plans keep every deal. Car
+// COUNTS (goal, pace, "vehicles sold") use the raw list, NOT this — a DNQ deal
+// is still a delivered car. One definition, used by the forecast, the boards,
+// and the pay-plan status so PVR reads the SAME number everywhere.
+export function fniPayDeals(plan: PayPlan, deals: Deal[]): Deal[] {
+  return plan.grid?.basis === "back" ? deals.filter((d) => !d.noQualify) : deals;
+}
+
 export function forecast(plan: PayPlan, deals: Deal[], now = new Date(), daysOff: number[] = []): Forecast {
   const month = deals.filter((d) => isThisMonth(d.date, now) && d.status !== "dead");
   const counted = month.filter((d) => d.status === "delivered");
   const pipeline = month.filter((d) => d.status !== "delivered");
 
-  // F&I back-end grids pay on RETAIL cars only. A no-qualify (DNQ / house) deal
-  // carries $0 F&I and is NOT an F&I-qualifying unit, so leaving it in drags the
-  // grid PVR/rate below reality (July 23: rep at $1,733 F&I PVR, but the card
-  // said "reach $1,600" — DNQ units pulled the counted PVR under the tier). This
-  // mirrors fniPayPicture / THE LOGG, which drop no-qualify before paying. Car
-  // counts and pace below still use `counted` (a DNQ deal IS a delivered car).
-  const isFniGrid = plan.grid?.basis === "back";
-  const payCounted = isFniGrid ? counted.filter((d) => !d.noQualify) : counted;
-  const payPipeline = isFniGrid ? pipeline.filter((d) => !d.noQualify) : pipeline;
+  const payCounted = fniPayDeals(plan, counted);
+  const payPipeline = fniPayDeals(plan, pipeline);
 
   const countedPerf = perfFromDeals(payCounted);
   const current = calculatePay(plan, countedPerf);
