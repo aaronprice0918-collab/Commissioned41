@@ -356,7 +356,7 @@ export const ILA_TOOLS = [
   {
     name: "report_issue",
     description:
-      "File a problem you cannot fix yourself (a number that looks mathematically wrong, something broken or confusing in the app) directly to Aaron's team. Include exactly what the user saw, what they expected, and the relevant numbers. Then tell the user it's filed and their exact words are in front of a human.",
+      "File a problem you cannot fix yourself (a number that looks mathematically wrong, something broken or confusing in the app) to Aaron's team. This forwards the report to the team's alert channel. Include exactly what the user saw, what they expected, and the relevant numbers. Report the result HONESTLY from the tool's response: if it confirms delivery, tell the user it's filed and in front of Aaron's team; if it says delivery is unconfirmed, tell them it's logged but to also flag it to Aaron directly. NEVER claim a message reached anyone that the tool did not confirm, and never invent details about how the routing works (you do not know the channel internals — just relay the tool result).",
     input_schema: {
       type: "object" as const,
       properties: {

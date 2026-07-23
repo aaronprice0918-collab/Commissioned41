@@ -49,6 +49,9 @@ export async function POST(req: Request) {
   const details = String(body.details ?? "").trim().slice(0, 2000);
   if (!summary) return NextResponse.json({ error: "Missing summary." }, { status: 400 });
 
-  await notifyFailure(`EILA report from ${email}: ${summary}`, details || "(no details)");
-  return NextResponse.json({ ok: true });
+  const { posted } = await notifyFailure(`EILA report from ${email}: ${summary}`, details || "(no details)");
+  // ok = we accepted + logged it; delivered = the alert channel actually took it.
+  // Relaying `delivered` lets EILA tell the user the truth instead of claiming a
+  // Slack delivery it can't see.
+  return NextResponse.json({ ok: true, delivered: posted });
 }

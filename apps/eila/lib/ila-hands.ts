@@ -681,7 +681,17 @@ export async function executeIlaTool(call: IlaToolCall, ctx: HandsCtx): Promise<
           body: JSON.stringify({ summary: call.input.summary, details: call.input.details }),
         });
         if (!res.ok) return { content: "Filing failed — tell the user to also mention this to support directly.", isError: true };
-        return { content: "Filed with Aaron's team, with full context.", friendly: "✓ Filed to Aaron's team" };
+        const rep = (await res.json().catch(() => ({}))) as { delivered?: boolean };
+        // Be honest about delivery. This route forwards to Aaron's team alert
+        // channel (currently Slack). If the channel didn't confirm, say it's
+        // logged but delivery is unconfirmed — never claim "they got it".
+        if (rep.delivered === false) {
+          return {
+            content: "Logged on our end, but the team's alert channel did not confirm delivery. Tell the user it's recorded and, so it isn't missed, to also flag it to Aaron directly. Do NOT claim it reached anyone yet.",
+            friendly: "✓ Logged (delivery unconfirmed)",
+          };
+        }
+        return { content: "Filed with Aaron's team and delivered to their alert channel, with full context.", friendly: "✓ Filed to Aaron's team" };
       }
 
       case "set_pay_goal": {
