@@ -43,6 +43,17 @@ describe("penetration", () => {
     expect(p.find((x) => x.def.id === "vsc")?.pct).toBeCloseTo(0.5);
     expect(p.find((x) => x.def.id === "gap")?.pct).toBeCloseTo(0.25);
   });
+
+  it("excludes no-qualify (DNQ) cars from the denominator — matches VSC% / the pay card", () => {
+    // 3 retail cars, 2 with VSC, + one DNQ car → 2/3 = 67%, NOT 2/4 = 50%.
+    const deals = [
+      deal({ products: ["vsc"] }),
+      deal({ products: ["vsc"] }),
+      deal({ products: [] }),
+      deal({ products: [], noQualify: true }),
+    ];
+    expect(penetration(deals, DEFS).find((x) => x.def.id === "vsc")?.pct).toBeCloseTo(2 / 3);
+  });
 });
 
 describe("salespersonReport", () => {
