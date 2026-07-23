@@ -62,10 +62,13 @@ export function vscPenetrationPct(deals: Deal[], defs: ProductDef[]): number {
   return (cars.filter((d) => d.products?.includes(id)).length / cars.length) * 100;
 }
 
-// Penetration: what share of CARS carried each product. Product-only deals
-// aren't cars, so they're out of both the numerator and the denominator.
+// Penetration: what share of RETAIL cars carried each product. Product-only
+// deals aren't cars, and no-qualify (DNQ/house) deals can't carry F&I products,
+// so both are out of the numerator AND the denominator — matching vscPenetrationPct
+// and the pay card (July 23: the widget read VSC 44% (÷34) while the board read
+// 48% (÷31 retail)).
 export function penetration(deals: Deal[], defs: ProductDef[]): { def: ProductDef; count: number; pct: number }[] {
-  const cars = deals.filter((d) => !isProductOnly(d));
+  const cars = deals.filter((d) => !isProductOnly(d) && !d.noQualify);
   const n = cars.length || 1;
   return defs.map((def) => {
     const count = cars.filter((d) => d.products?.includes(def.id)).length;
