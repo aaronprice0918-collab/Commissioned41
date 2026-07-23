@@ -216,13 +216,23 @@ export function forecast(plan: PayPlan, deals: Deal[], now = new Date(), daysOff
   const counted = month.filter((d) => d.status === "delivered");
   const pipeline = month.filter((d) => d.status !== "delivered");
 
-  const countedPerf = perfFromDeals(counted);
+  // F&I back-end grids pay on RETAIL cars only. A no-qualify (DNQ / house) deal
+  // carries $0 F&I and is NOT an F&I-qualifying unit, so leaving it in drags the
+  // grid PVR/rate below reality (July 23: rep at $1,733 F&I PVR, but the card
+  // said "reach $1,600" — DNQ units pulled the counted PVR under the tier). This
+  // mirrors fniPayPicture / THE LOGG, which drop no-qualify before paying. Car
+  // counts and pace below still use `counted` (a DNQ deal IS a delivered car).
+  const isFniGrid = plan.grid?.basis === "back";
+  const payCounted = isFniGrid ? counted.filter((d) => !d.noQualify) : counted;
+  const payPipeline = isFniGrid ? pipeline.filter((d) => !d.noQualify) : pipeline;
+
+  const countedPerf = perfFromDeals(payCounted);
   const current = calculatePay(plan, countedPerf);
-  const best = calculatePay(plan, perfFromDeals([...counted, ...pipeline]));
+  const best = calculatePay(plan, perfFromDeals([...payCounted, ...payPipeline]));
 
   // weighted "likely": each pipeline deal scaled by its stage probability
   let weighted = countedPerf;
-  for (const d of pipeline) weighted = combine(weighted, scaledPerf([d], STATUS_WEIGHT[d.status]));
+  for (const d of payPipeline) weighted = combine(weighted, scaledPerf([d], STATUS_WEIGHT[d.status]));
   const likely = calculatePay(plan, weighted);
 
   // pace: extrapolate delivered units over the user's WORKING month — a rep
@@ -236,7 +246,7 @@ export function forecast(plan: PayPlan, deals: Deal[], now = new Date(), daysOff
   const workTotal = Math.max(workedSoFar, workingDays(now, daysInMonth, daysOff));
   const paceUnits = Math.round((counted.length / workedSoFar) * workTotal);
   const factor = counted.length > 0 ? paceUnits / counted.length : 0;
-  const pacePerf = factor > 0 ? scaledPerf(counted, factor) : countedPerf;
+  const pacePerf = factor > 0 ? scaledPerf(payCounted, factor) : countedPerf;
   const pace = calculatePay(plan, pacePerf);
   const pacePay = pace.grossPay;
 

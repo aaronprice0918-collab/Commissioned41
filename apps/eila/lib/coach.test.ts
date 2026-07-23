@@ -1,5 +1,6 @@
 import { describe, it, expect } from "vitest";
 import { coach, todaysMission, Insight } from "./coach";
+import { forecast } from "./engine";
 import { makePlan, kennesawFinancePlan } from "./payplan/plans";
 import { Deal, DealStatus } from "./types";
 
@@ -199,5 +200,22 @@ describe("todaysMission()", () => {
     const deals = Array.from({ length: 8 }, () => deal({ status: "delivered" }));
     const msg = todaysMission(salesPlan, deals, "automotive", NOW);
     expect(msg).toMatch(/good lane/);
+  });
+});
+
+describe("forecast() — F&I grid pays on retail cars, not DNQ (July 23)", () => {
+  it("a no-qualify (DNQ) car does not drag the grid PVR below the real F&I PVR", () => {
+    // 3 retail cars at $1,733 F&I each + one no-qualify car ($0 F&I).
+    const deals = [
+      deal({ status: "delivered", secondary: 1733, addons: 2 }),
+      deal({ status: "delivered", secondary: 1733, addons: 2 }),
+      deal({ status: "delivered", secondary: 1733, addons: 2 }),
+      deal({ status: "delivered", secondary: 0, addons: 0, noQualify: true }),
+    ];
+    const f = forecast(kennesawFinancePlan(), deals, NOW);
+    // Grid PVR must read the retail average ($1,733), NOT 3×1733/4 = $1,300.
+    expect(f.current.rateBreakdown?.pvr).toBe(1733);
+    // The car COUNT still includes the DNQ delivery (4 cars sold).
+    expect(f.counted.length).toBe(4);
   });
 });
