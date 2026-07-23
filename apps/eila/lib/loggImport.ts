@@ -101,9 +101,16 @@ export function mapColumns(headers: string[], defs: ProductDef[]): LoggColumn[] 
     // 1) A product column? Match the user's own menu first (id or label), then hints.
     const byMenu = defs.find((d) => norm(d.id) === h || norm(d.label) === h);
     if (byMenu) return { index, header: raw, productId: byMenu.id };
+    // Generic hints resolve to the user's matching menu item even when their
+    // product ids are custom-generated (real menus use ids like "pmrpmkmsk3", so
+    // requiring id === "maint" never matched — a "Maint" header silently dropped
+    // the Maintenance product). Match the header to a category's hints, then find
+    // the user's product by generic id OR by a full label that belongs to that
+    // category (exact, no fuzzy substring — so "Other" still maps to "Other").
     for (const [pid, hints] of PRODUCT_HEADER_HINTS) {
-      if (!defs.some((d) => d.id === pid)) continue; // only if the user's menu has it
-      if (hints.includes(h)) return { index, header: raw, productId: pid };
+      if (!hints.includes(h)) continue;
+      const target = defs.find((d) => norm(d.id) === pid || hints.includes(norm(d.label)));
+      if (target) return { index, header: raw, productId: target.id };
     }
 
     // 2) A deal field? First alias set to match, not already taken.
@@ -183,7 +190,14 @@ export function parseLoggCsv(csv: string, defs: ProductDef[], opts: LoggImportOp
   if (rows.length < 2) {
     return { deals: [], columns: [], warnings: ["No data rows found — paste the header row plus at least one deal."], skipped: 0, rowCount: 0 };
   }
-  const columns = mapColumns(rows[0], defs);
+  // Find the HEADER row rather than assuming it's row 0. A raw Google Sheets
+  // "Download → CSV" of THE LOGG carries title/instruction rows above the real
+  // header ("Deal Log", "Visible columns are for entry/review…"), so row 0 maps
+  // nothing and every deal gets skipped. Use the first row that maps a Customer
+  // column; fall back to row 0 so a clean header-first paste still works.
+  let headerIdx = rows.findIndex((r) => mapColumns(r, defs).some((c) => c.field === "customer"));
+  if (headerIdx < 0) headerIdx = 0;
+  const columns = mapColumns(rows[headerIdx], defs);
   const col = (f: Field) => columns.find((c) => c.field === f);
   const productCols = columns.filter((c) => c.productId);
   const status = opts.status ?? "delivered";
@@ -196,7 +210,7 @@ export function parseLoggCsv(csv: string, defs: ProductDef[], opts: LoggImportOp
   const cellAt = (r: string[], f: Field) => { const c = col(f); return c ? (r[c.index] ?? "") : ""; };
   const deals: Omit<Deal, "id">[] = [];
   let skipped = 0;
-  const dataRows = rows.slice(1);
+  const dataRows = rows.slice(headerIdx + 1);
 
   for (const r of dataRows) {
     const customer = cellAt(r, "customer").trim();
