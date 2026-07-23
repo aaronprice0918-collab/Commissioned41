@@ -7,7 +7,7 @@ import { useMission } from "@/lib/store";
 import { useAskIla } from "./AppShell";
 import { DailyTracker } from "./DailyTracker";
 import { ProgressBoard } from "./ProgressBoard";
-import { forecast, localMonthKey, money, perfFromDeals } from "@/lib/engine";
+import { fniPayDeals, forecast, localMonthKey, money, perfFromDeals } from "@/lib/engine";
 import { Deal, DealStatus, INDUSTRY_UNIT, STATUS_LABEL } from "@/lib/types";
 import { INDUSTRY_DEAL, localizeUnits, statusLabel } from "@/lib/industry";
 import { dealMoneyOf, moneyBasis, penetration, productDefs, round1, salespersonReport, spiffTotal, usesProductMenu, vscPenetrationPct } from "@/lib/fni";
@@ -151,7 +151,10 @@ export function Performance() {
   const vscPct = useMemo(() => vscPenetrationPct(f.counted, defs), [f.counted, defs]);
 
   const funnelMax = Math.max(1, ...FUNNEL_STAGES.map((s) => f.counted.concat(f.pipeline).filter((d) => d.status === s).length));
-  const currentPerf = useMemo(() => perfFromDeals(f.counted), [f.counted]);
+  // Pay-plan status (PVR/PPU/bonus checks) must read the SAME retail basis the
+  // grid pays on — else it shows PVR $1,580 (all cars) next to a base rate on
+  // $1,733 (retail). fniPayDeals drops no-qualify for an F&I grid.
+  const currentPerf = useMemo(() => perfFromDeals(fniPayDeals(plan, f.counted)), [plan, f.counted]);
   const statusRows = useMemo(() => payStatusRows(plan, f.current, currentPerf), [plan, f.current, currentPerf]);
   const bestMove = f.current.nextTiers[0];
 

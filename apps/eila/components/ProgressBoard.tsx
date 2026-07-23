@@ -4,7 +4,7 @@ import { useEffect, useMemo, useState } from "react";
 import { BadgePercent, Car, DollarSign, Gauge, Layers, ShieldCheck } from "lucide-react";
 import { useMission } from "@/lib/store";
 import { useAskIla } from "./AppShell";
-import { forecast, dealTotals, money, isProductOnly } from "@/lib/engine";
+import { fniPayDeals, forecast, dealTotals, money } from "@/lib/engine";
 import { INDUSTRY_UNIT } from "@/lib/types";
 import { basisGrossLabel, dealMoneyOf, moneyBasis, productDefs, usesProductMenu, vscPenetrationPct } from "@/lib/fni";
 import type { PayPlan } from "@/lib/payplan/types";
@@ -72,9 +72,17 @@ export function ProgressBoard() {
     const basis = moneyBasis(profile);
     const defs = productDefs(profile);
     const basisGross = counted.reduce((s, d) => s + dealMoneyOf(basis)(d), 0);
+    // The Vehicles row is the CAR count — every delivered car, DNQ included.
     const units = t.units;
-    const pvr = units ? basisGross / units : 0;
-    const ppu = t.addonsPerUnit;
+    // PVR / PPU are per-RETAIL-car — an F&I grid drops no-qualify (DNQ) cars from
+    // the denominator, matching the pay card / THE LOGG. Divide by all cars and
+    // PVR reads $1,580 next to the pay card's $1,733 (July 23 contradiction).
+    const payDeals = fniPayDeals(plan, counted);
+    const payTotals = dealTotals(payDeals);
+    const payUnits = payTotals.units;
+    const payBasisGross = payDeals.reduce((s, d) => s + dealMoneyOf(basis)(d), 0);
+    const pvr = payUnits ? payBasisGross / payUnits : 0;
+    const ppu = payTotals.addonsPerUnit;
 
     // VSC penetration = % of retail cars carrying VSC, resolved against the
     // user's OWN menu (a custom menu's VSC id isn't the literal "vsc").

@@ -1,6 +1,6 @@
 import { describe, it, expect } from "vitest";
 import { coach, todaysMission, Insight } from "./coach";
-import { forecast } from "./engine";
+import { forecast, fniPayDeals, dealTotals } from "./engine";
 import { makePlan, kennesawFinancePlan } from "./payplan/plans";
 import { Deal, DealStatus } from "./types";
 
@@ -217,5 +217,25 @@ describe("forecast() — F&I grid pays on retail cars, not DNQ (July 23)", () =>
     expect(f.current.rateBreakdown?.pvr).toBe(1733);
     // The car COUNT still includes the DNQ delivery (4 cars sold).
     expect(f.counted.length).toBe(4);
+  });
+});
+
+describe("PVR is one number everywhere (board == pay card, July 23)", () => {
+  it("board PVR (F&I gross / retail cars) matches the forecast's grid PVR with DNQ present", () => {
+    // 3 retail cars at $1,733 + one DNQ car. Board must divide by 3, not 4.
+    const deals = [
+      deal({ status: "delivered", secondary: 1733, addons: 3 }),
+      deal({ status: "delivered", secondary: 1733, addons: 3 }),
+      deal({ status: "delivered", secondary: 1733, addons: 3 }),
+      deal({ status: "delivered", secondary: 0, addons: 0, noQualify: true }),
+    ];
+    const plan = kennesawFinancePlan();
+    const f = forecast(plan, deals, NOW);
+    // The board's own PVR math (retail cars) …
+    const payDeals = fniPayDeals(plan, f.counted);
+    const boardPvr = dealTotals(payDeals).units ? payDeals.reduce((s, d) => s + d.secondary, 0) / dealTotals(payDeals).units : 0;
+    // … equals the grid PVR the pay engine used — no $1,580-vs-$1,733 split.
+    expect(boardPvr).toBe(1733);
+    expect(f.current.rateBreakdown?.pvr).toBe(1733);
   });
 });
