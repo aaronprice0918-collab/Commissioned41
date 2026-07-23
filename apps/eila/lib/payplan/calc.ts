@@ -40,6 +40,14 @@ function basisGrossOf(basis: Basis, front: number, back: number): number {
   return basis === "front" ? front : basis === "back" ? back : front + back;
 }
 
+// The PVR axis is per-car gross on the plan's OWN basis. Name it by that basis
+// so it's unmistakable — a back-end grid's "$1,600" is F&I gross per car, NOT
+// total gross per car (July 23: "I'm above $1,600 per car" — his TOTAL was, his
+// F&I PVR wasn't; the generic "average gross per deal" wording blurred the two).
+function pvrAxisLabel(basis: Basis): string {
+  return basis === "back" ? "F&I gross per car" : basis === "front" ? "front gross per car" : "gross per car";
+}
+
 interface Derived { units: number; front: number; back: number; total: number; pvr: number; ppt: number; basis: Basis; basisGross: number }
 
 function derive(plan: PayPlan, perf: PerfInput): Derived {
@@ -333,7 +341,7 @@ function computeNextTiers(plan: PayPlan, perf: PerfInput, d: Derived, effRate: n
       const newRate = (g.rates[row]?.[col + 1] ?? g.rates[row][col]) + bonusRate;
       out.push({ axis: "pvr", label: "PVR", from: Math.round(d.pvr), to: g.x[col + 1],
         addRatePct: round2(newRate - effRate), addPay: round2((d.basisGross * (newRate - effRate)) / 100),
-        hint: `Get your average gross per deal up to ${money(g.x[col + 1])}` });
+        hint: `Get your ${pvrAxisLabel(d.basis)} up to ${money(g.x[col + 1])}` });
     }
   }
   // rate-add bonuses not yet earned (e.g. PVR>$1900, VSC>50%)
