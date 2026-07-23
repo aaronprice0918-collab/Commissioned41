@@ -3,11 +3,16 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import Image from "next/image";
 import { usePlaidLink, type PlaidLinkOnSuccessMetadata } from "react-plaid-link";
-import { Landmark, RefreshCw } from "lucide-react";
+import { Landmark, Plus, RefreshCw, X } from "lucide-react";
 import { useMission } from "@/lib/store";
 import { getSupabase } from "@/lib/supabase";
 import { applyBankSync, type BankSyncPayload } from "@/lib/money/engine";
-import { defaultMoneyConfig } from "@/lib/money/types";
+import { defaultMoneyConfig, type MoneyConfig } from "@/lib/money/types";
+
+interface BankItem {
+  id: string;
+  institution: string;
+}
 
 // Platinum VIP bank connection on the Money tab.
 // Three faces: the $9.99/mo VIP pitch (not a member), the connect button
@@ -71,13 +76,17 @@ type Face = "loading" | "pitch" | "connect" | "connected" | "unavailable" | "sig
 export function BankLink() {
   const { data, updateMoney } = useMission();
   const cfg = data.profile?.money ?? defaultMoneyConfig();
-  const holderName = data.profile?.name;
 
   const [face, setFace] = useState<Face>(cfg.bank ? "connected" : "loading");
   const [busy, setBusy] = useState(false);
   const [linkToken, setLinkToken] = useState<string | null>(null);
   const [isOauthReturn, setIsOauthReturn] = useState(false);
   const [note, setNote] = useState<string | null>(null);
+  // Every bank the member has linked (with row ids so each can be removed).
+  const [items, setItems] = useState<BankItem[]>([]);
+  // Set when the user taps "Add another bank": we fetch a fresh link token,
+  // then open Plaid Link the moment the widget re-arms with it.
+  const [pendingOpen, setPendingOpen] = useState(false);
 
   const receivedRedirectUri = useMemo(
     () => (isOauthReturn ? window.location.href : undefined),
@@ -103,6 +112,7 @@ export function BankLink() {
       if (s.status === 401) return setFace("signed-out");
       if (!s.vip) return setFace("pitch");
       if (!s.configured) return setFace("unavailable");
+      if (Array.isArray(s.items)) setItems(s.items as BankItem[]);
       if (s.connected || cfg.bank) return setFace("connected");
       const lt = await bankApi({ action: "link-token" });
       if (!active) return;
@@ -134,7 +144,7 @@ export function BankLink() {
       }
       const sync = r.sync as BankSyncPayload | null | undefined;
       if (sync) {
-        updateMoney(applyBankSync(cfg, sync, new Date().toISOString(), holderName));
+        updateMoney(applyBankSync(cfg, sync, new Date().toISOString()));
         setFace("connected");
         const chk = sync.checking != null ? `checking $${Math.round(sync.checking).toLocaleString()}` : "no checking found";
         setNote(`Synced ✓ ${chk} · ${sync.transactions.length} recent transactions checked`);
@@ -143,7 +153,13 @@ export function BankLink() {
       setBusy(false);
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [cfg, updateMoney, holderName]);
+  }, [cfg, updateMoney]);
+
+  // Re-read the linked-bank list (with ids) from the server after an add/remove.
+  const refreshItems = useCallback(async () => {
+    const s = await bankApi({ action: "status" });
+    if (Array.isArray(s.items)) setItems(s.items as BankItem[]);
+  }, []);
 
   const onSuccess = useCallback(
     async (publicToken: string, metadata: PlaidLinkOnSuccessMetadata) => {
@@ -168,11 +184,12 @@ export function BankLink() {
         }
         setFace("connected");
         await runSync();
+        await refreshItems();
       } finally {
         setBusy(false);
       }
     },
-    [isOauthReturn, runSync],
+    [isOauthReturn, runSync, refreshItems],
   );
 
   const onExit = useCallback(() => {
@@ -189,6 +206,78 @@ export function BankLink() {
   useEffect(() => {
     if (isOauthReturn && ready) open();
   }, [isOauthReturn, ready, open]);
+
+  // "Add another bank" tapped: once the widget re-arms with the fresh token, open it.
+  useEffect(() => {
+    if (pendingOpen && ready) {
+      open();
+      setPendingOpen(false);
+    }
+  }, [pendingOpen, ready, open]);
+
+  // Link an additional bank. Always mints a FRESH link token — Plaid link
+  // tokens are single-use per item, so reusing the last one would fail.
+  const addBank = useCallback(async () => {
+    setBusy(true);
+    setNote(null);
+    try {
+      const lt = await bankApi({ action: "link-token" });
+      if (lt.status === 0) {
+        setNote("Couldn't reach the server — check your connection and try again.");
+        return;
+      }
+      if (typeof lt.link_token === "string") {
+        setLinkToken(lt.link_token);
+        stashLinkToken(lt.link_token);
+        setPendingOpen(true); // the effect above opens Link when it's ready
+      } else {
+        setNote("Bank linking is warming up — try again in a moment.");
+      }
+    } finally {
+      setBusy(false);
+    }
+  }, []);
+
+  // Remove one linked bank. If it was the last one, clear the live bank data
+  // and drop back to the connect screen; otherwise re-aggregate what's left.
+  const removeBank = useCallback(
+    async (itemId: string, institution: string) => {
+      if (typeof window !== "undefined" && !window.confirm(`Remove ${institution}? Its balances and transactions will stop syncing.`)) return;
+      setBusy(true);
+      setNote(null);
+      try {
+        const r = await bankApi({ action: "disconnect", item_id: itemId });
+        if (r.status === 0) {
+          setNote("Couldn't reach the server — try again.");
+          return;
+        }
+        if (typeof r.status === "number" && r.status >= 400) {
+          setNote("Couldn't remove that bank — try again in a minute.");
+          return;
+        }
+        const remaining = typeof r.remaining === "number" ? r.remaining : 0;
+        if (remaining <= 0) {
+          // Last bank gone — wipe the live feed from the member's money config
+          // so nothing stale lingers, and offer a fresh connect.
+          updateMoney({ ...cfg, bank: undefined, bankTransactions: undefined } as MoneyConfig);
+          setItems([]);
+          setFace("connect");
+          const lt = await bankApi({ action: "link-token" });
+          if (typeof lt.link_token === "string") {
+            setLinkToken(lt.link_token);
+            stashLinkToken(lt.link_token);
+          }
+          return;
+        }
+        await refreshItems();
+        await runSync();
+        setNote(`${institution} removed.`);
+      } finally {
+        setBusy(false);
+      }
+    },
+    [cfg, updateMoney, refreshItems, runSync],
+  );
 
   const startVipCheckout = useCallback(async () => {
     setBusy(true);
@@ -267,7 +356,8 @@ export function BankLink() {
           <Landmark size={16} className="text-accent" /> Connect your bank
         </div>
         <p className="mt-1 text-xs text-fg/70">
-          VIP is active. Link your bank once and your balance stays live — EILA syncs it for you.
+          VIP is active. Link a bank and your balance stays live — EILA syncs it for you. You can add
+          more than one; they all roll up together.
         </p>
         <button className="btn btn-primary btn-block mt-3" onClick={() => open()} disabled={!ready || busy}>
           {busy ? "Connecting…" : !ready ? "Warming up the secure widget…" : "Connect bank"}
@@ -278,12 +368,15 @@ export function BankLink() {
   }
 
   // connected
+  const accounts = cfg.bank?.accounts ?? [];
+  const bankNames = items.length ? items.map((i) => i.institution) : (cfg.bank?.institutions ?? []);
+  const heading = bankNames.length > 1 ? `${bankNames.length} banks connected` : bankNames[0] || "Bank connected";
   return (
     <div className="glass rise p-4">
       <div className="flex items-center justify-between gap-3">
         <div className="min-w-0">
           <div className="flex items-center gap-2 text-sm font-bold">
-            <Landmark size={16} className="text-good" /> {cfg.bank?.institutions.join(", ") || "Bank connected"}
+            <Landmark size={16} className="text-good" /> {heading}
           </div>
           <div className="mt-0.5 text-[11px] text-fg/50">
             {note ??
@@ -296,6 +389,49 @@ export function BankLink() {
           <RefreshCw size={15} className={busy ? "animate-spin" : ""} /> Sync
         </button>
       </div>
+
+      {/* Every account across every linked bank, with its live balance */}
+      {accounts.length > 0 && (
+        <div className="mt-3 space-y-1.5">
+          {accounts.map((a, i) => (
+            <div key={`${a.name}-${a.mask}-${i}`} className="flex items-center justify-between gap-3 rounded-lg bg-fg/[0.03] px-3 py-2">
+              <div className="min-w-0">
+                <div className="truncate text-[13px] font-semibold">
+                  {a.name}
+                  {a.mask ? <span className="text-fg/45"> ····{a.mask}</span> : null}
+                </div>
+                <div className="text-[10px] uppercase tracking-wide text-fg/45">{a.type}</div>
+              </div>
+              <div className="shrink-0 text-[13px] font-bold tabular-nums">${Math.round(a.balance).toLocaleString()}</div>
+            </div>
+          ))}
+        </div>
+      )}
+
+      {/* Manage each linked institution (remove is per-bank) */}
+      {items.length > 0 && (
+        <div className="mt-3 divide-y divide-fg/8 border-t border-fg/8">
+          {items.map((it) => (
+            <div key={it.id} className="flex items-center justify-between gap-3 py-2 text-[12px]">
+              <span className="flex min-w-0 items-center gap-1.5 text-fg/70">
+                <Landmark size={13} className="shrink-0 text-fg/40" /> <span className="truncate">{it.institution}</span>
+              </span>
+              <button
+                className="flex shrink-0 items-center gap-1 font-semibold text-warn/80 transition hover:text-warn disabled:opacity-40"
+                onClick={() => removeBank(it.id, it.institution)}
+                disabled={busy}
+                aria-label={`Remove ${it.institution}`}
+              >
+                <X size={13} /> Remove
+              </button>
+            </div>
+          ))}
+        </div>
+      )}
+
+      <button className="btn btn-ghost btn-block mt-3" onClick={addBank} disabled={busy || pendingOpen}>
+        <Plus size={15} /> {busy || pendingOpen ? "Opening secure link…" : "Add another bank"}
+      </button>
     </div>
   );
 }
