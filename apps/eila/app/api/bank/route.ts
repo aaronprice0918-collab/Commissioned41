@@ -11,11 +11,11 @@ import {
 } from "@/lib/bank";
 
 // The Platinum VIP bank connection, one route, action-dispatched:
-//   { action: "status" }                      -> { vip, configured, connected, institutions }
+//   { action: "status" }                      -> { vip, configured, connected, institutions, items }
 //   { action: "link-token" }                  -> { link_token }
 //   { action: "exchange", public_token, institution } -> { ok }
 //   { action: "sync" }                        -> { sync: BankSyncResult | null }
-//   { action: "disconnect" }                  -> { removed }
+//   { action: "disconnect", item_id? }        -> { removed, remaining }  (item_id omitted = remove all)
 // Every action requires a signed-in member; everything past "status" requires
 // VIP (fail closed — this feature costs real money per connection).
 export const runtime = "nodejs";
@@ -44,6 +44,8 @@ export async function POST(req: Request) {
         configured: await bankConfigured(),
         connected: items.length > 0,
         institutions: items.map((i) => i.institution),
+        // Full list with row ids so the client can show + remove each bank.
+        items: items.map((i) => ({ id: i.id, institution: i.institution })),
       });
     }
 
@@ -64,8 +66,11 @@ export async function POST(req: Request) {
       }
       case "sync":
         return NextResponse.json({ sync: await syncBank(user.id) });
-      case "disconnect":
-        return NextResponse.json({ removed: await disconnectBank(user.id) });
+      case "disconnect": {
+        // With an item_id, remove just that one bank; without it, remove all.
+        const itemId = typeof body.item_id === "string" ? body.item_id : undefined;
+        return NextResponse.json(await disconnectBank(user.id, itemId));
+      }
       default:
         return NextResponse.json({ error: "unknown action" }, { status: 400 });
     }

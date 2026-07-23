@@ -5,6 +5,8 @@ import Link from "next/link";
 import { ArrowUpRight, BarChart3, CheckCircle2, CircleAlert, CircleDashed, FileText, Layers, ReceiptText, Sparkles, Target, TrendingUp, Trophy, Users } from "lucide-react";
 import { useMission } from "@/lib/store";
 import { useAskIla } from "./AppShell";
+import { DailyTracker } from "./DailyTracker";
+import { ProgressBoard } from "./ProgressBoard";
 import { forecast, localMonthKey, money, perfFromDeals, isProductOnly } from "@/lib/engine";
 import { Deal, DealStatus, INDUSTRY_UNIT, STATUS_LABEL } from "@/lib/types";
 import { INDUSTRY_DEAL, localizeUnits, statusLabel } from "@/lib/industry";
@@ -160,6 +162,14 @@ export function Performance() {
         <h1 className="font-display text-2xl font-black">Performance</h1>
         <span className="pb-0.5 text-xs font-semibold text-fg/65">{monthName}</span>
       </div>
+
+      {/* Your daily sales tracker — the individual version of THE LOGG's daily
+          tracker (Total · % Goal · Still Need · Pace over a month calendar). The
+          10-second answer to "where am I this month" before any chart. */}
+      <DailyTracker />
+
+      {/* Quality board — PVR/PPU/VSC vs their plan targets, labeled rows. */}
+      <ProgressBoard />
 
       {/* One tap → the printable month-end report (THE LOGG's closing ritual) */}
       <Link href="/report" className="glass rise flex items-center justify-between p-4 transition active:scale-[0.99]">

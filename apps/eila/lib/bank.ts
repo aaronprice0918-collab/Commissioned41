@@ -202,12 +202,19 @@ export async function syncBank(userId: string): Promise<BankSyncResult | null> {
   return result;
 }
 
-export async function disconnectBank(userId: string): Promise<number> {
+// Disconnect ONE linked bank (pass its row id) or ALL of the user's banks
+// (omit itemRowId). Returns how many were removed and how many active banks
+// remain, so the client knows whether the member still has a live feed.
+export async function disconnectBank(userId: string, itemRowId?: string): Promise<{ removed: number; remaining: number }> {
   const admin = getSupabaseAdmin();
   if (!admin) throw new Error("supabase-admin-not-configured");
   const c = await loadBankConfig();
   const plaid = plaidClient(c);
-  const { data: items } = await admin.from(ITEMS_TABLE).select("id, access_token_enc").eq("user_id", userId);
+  // Always scope by user_id so an itemRowId from one member can never remove
+  // another member's bank.
+  let query = admin.from(ITEMS_TABLE).select("id, access_token_enc").eq("user_id", userId);
+  if (itemRowId) query = query.eq("id", itemRowId);
+  const { data: items } = await query;
   let removed = 0;
   for (const item of items ?? []) {
     try {
@@ -218,5 +225,10 @@ export async function disconnectBank(userId: string): Promise<number> {
     await admin.from(ITEMS_TABLE).delete().eq("id", item.id);
     removed++;
   }
-  return removed;
+  const { count } = await admin
+    .from(ITEMS_TABLE)
+    .select("id", { count: "exact", head: true })
+    .eq("user_id", userId)
+    .eq("status", "active");
+  return { removed, remaining: count ?? 0 };
 }
