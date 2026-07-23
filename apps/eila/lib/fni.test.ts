@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { dealUnits, penetration, salespersonReport, spiffTotal } from "./fni";
+import { dealUnits, penetration, resolveVscId, salespersonReport, spiffTotal, vscPenetrationPct } from "./fni";
 import { Deal, ProductDef } from "./types";
 
 const DEFS: ProductDef[] = [
@@ -117,5 +117,31 @@ describe("working-day pace", () => {
     // Sun July 5 is off: pace holds all day at Saturday's close-of-day rate.
     const sunday = forecast(plan, sevenDeals, new Date(2026, 6, 5, 15, 0, 0), [0, 2]).paceUnits;
     expect(sunday).toBe(forecast(plan, sevenDeals, new Date(2026, 6, 4, 23, 59, 0), [0, 2]).paceUnits);
+  });
+});
+
+describe("VSC resolution (custom menus don't use the id 'vsc')", () => {
+  it("resolves VSC by id on the default menu, by label on a custom menu", () => {
+    expect(resolveVscId(DEFS)).toBe("vsc");
+    // A real imported menu carries generated ids, never the literal "vsc".
+    const custom: ProductDef[] = [
+      { id: "pmrpmkmsk3", label: "VSC", units: 1, spiff: 0 },
+      { id: "pgap9x", label: "GAP", units: 1, spiff: 0 },
+    ];
+    expect(resolveVscId(custom)).toBe("pmrpmkmsk3");
+    expect(resolveVscId([{ id: "x", label: "GAP", units: 1, spiff: 0 }])).toBeUndefined();
+  });
+
+  it("counts VSC penetration off the custom id — the bug was a hardcoded 'vsc' reading 0%", () => {
+    const custom: ProductDef[] = [{ id: "pmrpmkmsk3", label: "VSC", units: 1, spiff: 0 }];
+    const deals = [
+      deal({ products: ["pmrpmkmsk3"] }),
+      deal({ products: ["pmrpmkmsk3"] }),
+      deal({ products: [] }),
+      deal({ products: ["pmrpmkmsk3"], noQualify: true }), // house deal — out of the denominator
+      deal({ products: ["pmrpmkmsk3"], productOnly: true }), // no car — out of the denominator
+    ];
+    // 2 of 3 retail cars carry VSC → 66.67%. A hardcoded includes("vsc") would read 0%.
+    expect(Math.round(vscPenetrationPct(deals, custom))).toBe(67);
   });
 });

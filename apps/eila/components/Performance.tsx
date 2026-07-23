@@ -7,10 +7,10 @@ import { useMission } from "@/lib/store";
 import { useAskIla } from "./AppShell";
 import { DailyTracker } from "./DailyTracker";
 import { ProgressBoard } from "./ProgressBoard";
-import { forecast, localMonthKey, money, perfFromDeals, isProductOnly } from "@/lib/engine";
+import { forecast, localMonthKey, money, perfFromDeals } from "@/lib/engine";
 import { Deal, DealStatus, INDUSTRY_UNIT, STATUS_LABEL } from "@/lib/types";
 import { INDUSTRY_DEAL, localizeUnits, statusLabel } from "@/lib/industry";
-import { dealMoneyOf, moneyBasis, penetration, productDefs, round1, salespersonReport, spiffTotal, usesProductMenu } from "@/lib/fni";
+import { dealMoneyOf, moneyBasis, penetration, productDefs, round1, salespersonReport, spiffTotal, usesProductMenu, vscPenetrationPct } from "@/lib/fni";
 import { fniPayPicture, isFinanceGridPlan, type FniPayPicture } from "@/lib/fniPay";
 import type { BonusRule, Condition, Metric, PayPlan, PayResult, PerfInput } from "@/lib/payplan/types";
 
@@ -146,10 +146,9 @@ export function Performance() {
   // draw + spiffs) for THIS month's counted deals, computed by the same audited
   // engine that reproduces THE LOGG to the dollar. Only F&I back-end grid plans.
   const payPic = useMemo(() => fniPayPicture(profile, f.counted), [profile, f.counted]);
-  const vscPct = useMemo(() => {
-    const retail = f.counted.filter((d) => !d.noQualify && !isProductOnly(d));
-    return retail.length ? (retail.filter((d) => d.products?.includes("vsc")).length / retail.length) * 100 : 0;
-  }, [f.counted]);
+  // Resolve VSC against the user's own menu — a custom menu's VSC id isn't the
+  // literal "vsc", which read a false 0% (July 23).
+  const vscPct = useMemo(() => vscPenetrationPct(f.counted, defs), [f.counted, defs]);
 
   const funnelMax = Math.max(1, ...FUNNEL_STAGES.map((s) => f.counted.concat(f.pipeline).filter((d) => d.status === s).length));
   const currentPerf = useMemo(() => perfFromDeals(f.counted), [f.counted]);
