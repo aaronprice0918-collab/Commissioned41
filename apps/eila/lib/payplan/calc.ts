@@ -327,13 +327,13 @@ function computeNextTiers(plan: PayPlan, perf: PerfInput, d: Derived, effRate: n
       const newRate = (g.rates[row + 1]?.[col] ?? g.rates[row][col]) + bonusRate;
       out.push({ axis: "ppt", label: "Products per deal", from: round2(d.ppt), to: g.y[row + 1],
         addRatePct: round2(newRate - effRate), addPay: round2((d.basisGross * (newRate - effRate)) / 100),
-        hint: `Lift products/deal to ${g.y[row + 1]} → +${round2(newRate - effRate)}% on every deal` });
+        hint: `Sell ${g.y[row + 1]} products a deal on average` });
     }
     if (col + 1 < g.x.length) {
       const newRate = (g.rates[row]?.[col + 1] ?? g.rates[row][col]) + bonusRate;
       out.push({ axis: "pvr", label: "PVR", from: Math.round(d.pvr), to: g.x[col + 1],
         addRatePct: round2(newRate - effRate), addPay: round2((d.basisGross * (newRate - effRate)) / 100),
-        hint: `Raise PVR to ${money(g.x[col + 1])} → +${round2(newRate - effRate)}% on every deal` });
+        hint: `Get your average gross per deal up to ${money(g.x[col + 1])}` });
     }
   }
   // rate-add bonuses not yet earned (e.g. PVR>$1900, VSC>50%)
@@ -346,7 +346,7 @@ function computeNextTiers(plan: PayPlan, perf: PerfInput, d: Derived, effRate: n
     const addPay = (d.basisGross * b.effect.amount) / 100;
     out.push({ axis: target.metric === "pvr" ? "pvr" : "penetration", label: b.label, from: 0, to: target.value,
       addRatePct: b.effect.amount, addPay: round2(addPay),
-      hint: `${b.label}: hit ${metricLabel(target.metric)} ${target.op === "gt" ? "over" : ""} ${target.metric === "pvr" ? money(target.value) : target.value + "%"} → +${b.effect.amount}% (≈ ${money(addPay)})` });
+      hint: `${b.label} — get your ${metricLabel(target.metric)} ${target.op === "gt" ? "over" : "to"} ${target.metric === "pvr" ? money(target.value) : target.value + "%"}` });
   }
   // tier bonuses not yet earned
   const byMetric = new Map<string, TierRule[]>();
@@ -358,7 +358,7 @@ function computeNextTiers(plan: PayPlan, perf: PerfInput, d: Derived, effRate: n
     if (next) {
       const amt = next.kind === "flat" ? next.amount : (basisGrossOf(next.basis ?? d.basis, d.front, d.back) * next.amount) / 100;
       out.push({ axis: next.metric === "units" ? "units" : "gross", label: next.label, from: Math.round(val), to: next.threshold,
-        addPay: round2(amt), hint: `Reach ${next.threshold} ${next.metric === "units" ? "units" : "gross"} → ${money(amt)} bonus` });
+        addPay: round2(amt), hint: `Reach ${next.metric === "units" ? `${next.threshold} units` : `${money(next.threshold)} in gross`}` });
     }
   }
   return out.sort((a, b) => b.addPay - a.addPay).slice(0, 4);
