@@ -187,6 +187,43 @@ describe("parseLoggCsv — THE LOGG's real quirks: Adjusted F&I Net, DNQ, Produc
   });
 });
 
+describe("mapColumns — generic hints resolve to a custom-generated product menu", () => {
+  // A real user's menu carries generated ids (pmrpmkmsk3), not "maint". A "Maint"
+  // header must still land on their Maintenance product by matching the hint to
+  // the LABEL, not require id === "maint" (which silently dropped the product).
+  const customDefs = [
+    { id: "pmrpmkmsk0", label: "VSC", spiff: 0, units: 1 },
+    { id: "pmrpmkmsk3", label: "Maintenance", spiff: 0, units: 1 },
+    { id: "pmrra14gi", label: "Other", spiff: 0, units: 1 },
+  ];
+  it("maps 'Maint' onto the user's generated-id Maintenance product", () => {
+    const cols = mapColumns(["Customer", "VSC", "Maint", "Road Hazard"], customDefs);
+    expect(cols[1].productId).toBe("pmrpmkmsk0");
+    expect(cols[2].productId).toBe("pmrpmkmsk3"); // was undefined before the fix
+    expect(cols[3].productId).toBe("pmrra14gi"); // Road Hazard → Other
+  });
+});
+
+describe("parseLoggCsv — finds the header row beneath title/instruction rows", () => {
+  // A raw Google Sheets "Download → CSV" of THE LOGG carries title/instruction
+  // rows above the real header. Row 0 maps nothing, so the whole import used to
+  // skip every deal. It must locate the header (first row with a Customer column).
+  const csv = [
+    "THE LOGG — Deal Log,,,,",
+    "Visible columns are for entry/review only,,,,",
+    "Deal #,Date,Customer,Vehicle,F&I",
+    "1001,7/2,Jane Doe,26 CX-5,1850",
+    "1002,7/5,John Smith,25 CX-90,2100",
+  ].join("\n");
+  const r = parseLoggCsv(csv, defs, { refYear: 2026 });
+  it("imports both deals despite two title rows on top", () => {
+    expect(r.deals.length).toBe(2);
+    expect(r.deals[0].customer).toBe("Jane Doe");
+    expect(r.deals[0].secondary).toBe(1850);
+    expect(r.deals[1].customer).toBe("John Smith");
+  });
+});
+
 describe("parseLoggCsv — warns instead of silently dropping money", () => {
   it("flags a missing back-gross column", () => {
     const csv = "Date,Customer,Front\n7/2,Jane,1000";
