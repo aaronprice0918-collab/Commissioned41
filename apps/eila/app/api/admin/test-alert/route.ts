@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { appConfig } from "@/lib/appConfig";
 
 // A one-shot diagnostic for the EILA → Slack (or Discord) alert wire. Every
 // real alert in the app flows through the same ALERT_WEBHOOK_URL incoming
@@ -18,7 +19,9 @@ export async function GET(req: Request) {
   const auth = req.headers.get("authorization");
   if (auth !== `Bearer ${secret}`) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
-  const url = process.env.ALERT_WEBHOOK_URL;
+  // Resolve from the SAME source notifyFailure uses (vault first, env fallback),
+  // so this diagnostic reflects the URL the app actually posts to.
+  const url = (await appConfig("ALERT_WEBHOOK_URL").catch(() => undefined)) || process.env.ALERT_WEBHOOK_URL;
   if (!url) {
     return NextResponse.json({
       ok: false,
