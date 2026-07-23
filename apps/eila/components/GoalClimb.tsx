@@ -49,7 +49,11 @@ export function GoalClimb({
         { at: bePct, label: "Break even" },
         { at: 50, label: short(summit * 0.5) },
         { at: 75, label: short(summit * 0.75) },
-      ].filter((m) => m.at > 6 && m.at < 94)
+      ]
+        // Keep on-card, AND drop any milestone sitting under the you-are-here
+        // marker — its label owns that spot (July 23: "Break even" and "you're
+        // here" were printing on top of each other).
+        .filter((m) => m.at > 6 && m.at < 94 && Math.abs(m.at - pct) > 9)
     : [];
 
   return (
@@ -123,7 +127,7 @@ export function GoalClimb({
             <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-accent opacity-50" />
             <span className="relative inline-flex h-4 w-4 rounded-full bg-accent ring-[3px] ring-white shadow" />
           </span>
-          <div className="absolute left-1/2 top-full mt-1 whitespace-nowrap text-[10px] font-extrabold text-accent" style={{ transform: `translateX(${labelShift(pct)})` }}>you're here</div>
+          <div className="absolute left-1/2 top-full mt-1.5 whitespace-nowrap rounded-full bg-accent px-2 py-0.5 text-[10px] font-extrabold text-white shadow-sm" style={{ transform: `translateX(${labelShift(pct)})` }}>You&apos;re here</div>
         </div>
 
         {/* summit flag with the goal */}

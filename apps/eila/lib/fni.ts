@@ -44,6 +44,24 @@ export function spiffTotal(deals: Deal[], defs: ProductDef[]): number {
   return t;
 }
 
+// The VSC product in THIS user's menu. A custom/imported menu carries GENERATED
+// ids ("pmrpmkmsk3"), not the literal "vsc" — so any hardcoded `includes("vsc")`
+// check reads 0% for those users (July 23: "VSC is not 0%"). Resolve by canonical
+// id first, then by label, so it works for the default menu AND a custom one.
+export function resolveVscId(defs: ProductDef[]): string | undefined {
+  return (defs.find((d) => d.id === "vsc") ?? defs.find((d) => /\bv\.?s\.?c\b|service\s*contract/i.test(d.label)))?.id;
+}
+
+// % of retail cars carrying VSC — the one number every VSC display should use.
+// Denominator = cars that could take VSC (not product-only, not a house/DNQ deal).
+export function vscPenetrationPct(deals: Deal[], defs: ProductDef[]): number {
+  const id = resolveVscId(defs);
+  if (!id) return 0;
+  const cars = deals.filter((d) => !isProductOnly(d) && !d.noQualify);
+  if (!cars.length) return 0;
+  return (cars.filter((d) => d.products?.includes(id)).length / cars.length) * 100;
+}
+
 // Penetration: what share of CARS carried each product. Product-only deals
 // aren't cars, so they're out of both the numerator and the denominator.
 export function penetration(deals: Deal[], defs: ProductDef[]): { def: ProductDef; count: number; pct: number }[] {

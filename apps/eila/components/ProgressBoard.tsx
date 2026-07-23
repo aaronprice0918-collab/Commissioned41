@@ -6,7 +6,7 @@ import { useMission } from "@/lib/store";
 import { useAskIla } from "./AppShell";
 import { forecast, dealTotals, money, isProductOnly } from "@/lib/engine";
 import { INDUSTRY_UNIT } from "@/lib/types";
-import { basisGrossLabel, dealMoneyOf, moneyBasis, usesProductMenu } from "@/lib/fni";
+import { basisGrossLabel, dealMoneyOf, moneyBasis, productDefs, usesProductMenu, vscPenetrationPct } from "@/lib/fni";
 import type { PayPlan } from "@/lib/payplan/types";
 
 // EILA's month at a glance — a Monarch-style progress board: every number that
@@ -70,14 +70,15 @@ export function ProgressBoard() {
     const counted = f.counted;
     const t = dealTotals(counted);
     const basis = moneyBasis(profile);
+    const defs = productDefs(profile);
     const basisGross = counted.reduce((s, d) => s + dealMoneyOf(basis)(d), 0);
     const units = t.units;
     const pvr = units ? basisGross / units : 0;
     const ppu = t.addonsPerUnit;
 
-    // VSC penetration = % of retail cars (not product-only, not house) carrying VSC.
-    const retail = counted.filter((d) => !d.noQualify && !isProductOnly(d));
-    const vscPct = retail.length ? (retail.filter((d) => d.products?.includes("vsc")).length / retail.length) * 100 : 0;
+    // VSC penetration = % of retail cars carrying VSC, resolved against the
+    // user's OWN menu (a custom menu's VSC id isn't the literal "vsc").
+    const vscPct = vscPenetrationPct(counted, defs);
 
     // Honest targets from the plan itself.
     const goal = plan.goalUnits || 0;
