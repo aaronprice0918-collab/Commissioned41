@@ -14,6 +14,7 @@ import { ArrowLeft, Camera, Check, Plus, Sparkles, Wallet } from "lucide-react";
 import { useMission } from "@/lib/store";
 import { useAskIla } from "@/components/AppShell";
 import { forecast } from "@/lib/engine";
+import { vscIdOf } from "@/lib/fni";
 import { getSupabase } from "@/lib/supabase";
 import { compressImage } from "@/lib/payplan/upload";
 import {
@@ -60,7 +61,7 @@ export function DailyBudget() {
   }, []);
 
   const f = useMemo(
-    () => forecast(profile.plan, data.deals, now, profile.daysOff ?? []),
+    () => forecast(profile.plan, data.deals, now, profile.daysOff ?? [], vscIdOf(profile)),
     [profile.plan, profile.daysOff, data.deals, now],
   );
   const income = useMemo(

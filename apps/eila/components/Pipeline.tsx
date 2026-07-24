@@ -8,6 +8,7 @@ import { useMission } from "@/lib/store";
 import { Deal, DealStatus, Industry, STATUS_LABEL } from "@/lib/types";
 import { INDUSTRY_DEAL, statusLabel } from "@/lib/industry";
 import { calculatePay, localMonthKey, money, perfFromDeals } from "@/lib/engine";
+import { vscIdOf } from "@/lib/fni";
 import { SectionTitle } from "./ui";
 
 // the order a deal advances through
@@ -31,7 +32,7 @@ export function Pipeline() {
     LIVE.forEach((s) => (byStage[s] = live.filter((d) => d.status === s)));
     const monthDeals = data.deals.filter((d) => localMonthKey(d.date) === monthKey && d.status !== "dead");
     const deliveredThisMonth = monthDeals.filter((d) => d.status === "delivered").sort((a, b) => b.date.localeCompare(a.date));
-    const pay = calculatePay(plan, perfFromDeals(deliveredThisMonth));
+    const pay = calculatePay(plan, perfFromDeals(deliveredThisMonth, vscIdOf(data.profile)));
     const followDue = data.deals.filter(
       (d) => d.followUpAt && new Date(d.followUpAt) <= endToday() && d.status !== "delivered" && d.status !== "dead"
     );

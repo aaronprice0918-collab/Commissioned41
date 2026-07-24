@@ -6,7 +6,7 @@
 import type { Deal, IlaMemory, LifeItemKind, ProductDef, Profile } from "./types";
 import type { PayPlan } from "./payplan/types";
 import { classifyPlan } from "./payplan/calc";
-import { dealUnits, productDefs } from "./fni";
+import { dealUnits, productDefs, vscIdOf } from "./fni";
 import type { IlaToolCall } from "./ila-tools";
 import type { Bill, MoneyConfig, MoneyGoal } from "./money/types";
 import { defaultMoneyConfig } from "./money/types";
@@ -658,7 +658,7 @@ export async function executeIlaTool(call: IlaToolCall, ctx: HandsCtx): Promise<
         }
         if (!(amount > 0)) return { content: "No valid purchase amount given.", isError: true };
         const now = new Date();
-        const f = forecast(ctx.profile.plan, ctx.deals, now, ctx.profile.daysOff ?? []);
+        const f = forecast(ctx.profile.plan, ctx.deals, now, ctx.profile.daysOff ?? [], vscIdOf(ctx.profile));
         const income = incomeExpectation(f.likely.grossPay, cfg.paydays ?? cfg.payday, now, ctx.profile.plan.taxRate, cfg.checkNets);
         const avgPerDeal = f.totals.units > 0 ? f.current.grossPay / f.totals.units : 0;
         const v = evaluatePurchase(cfg, income, now, amount, avgPerDeal);

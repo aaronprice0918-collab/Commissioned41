@@ -9,7 +9,7 @@ import { forecast, dealTotals, followUpQueue, monthBounds, money } from "@/lib/e
 import { coach, todaysMission, Insight } from "@/lib/coach";
 import { INDUSTRY_UNIT, ROLE_LABEL } from "@/lib/types";
 import { INDUSTRY_DEAL, localizeUnits, statusLabel } from "@/lib/industry";
-import { basisGrossLabel, dealMoneyOf, moneyBasis } from "@/lib/fni";
+import { basisGrossLabel, dealMoneyOf, moneyBasis, vscIdOf } from "@/lib/fni";
 import type { NextTier, PlanType } from "@/lib/payplan/types";
 import { Stat, SectionTitle, Drawer } from "./ui";
 import { CountUp, ProgressRing } from "./motion";
@@ -28,10 +28,11 @@ export function Dashboard() {
   const hasSampleData = data.deals.some((d) => d.demo);
 
   const v = useMemo(() => {
-    const f = forecast(plan, data.deals, new Date(), profile.daysOff ?? []);
+    const vscId = vscIdOf(profile);
+    const f = forecast(plan, data.deals, new Date(), profile.daysOff ?? [], vscId);
     const live = dealTotals(f.counted);
-    const insights = coach(plan, data.deals, profile.industry, new Date(), profile.daysOff ?? []);
-    const mission = todaysMission(plan, data.deals, profile.industry, new Date(), profile.daysOff ?? []);
+    const insights = coach(plan, data.deals, profile.industry, new Date(), profile.daysOff ?? [], vscId);
+    const mission = todaysMission(plan, data.deals, profile.industry, new Date(), profile.daysOff ?? [], vscId);
     const touchQueue = followUpQueue(data.deals);
     const today = localDayKey();
     const todayLife = (data.lifeItems ?? [])

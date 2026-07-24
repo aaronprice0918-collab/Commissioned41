@@ -9,7 +9,7 @@ import { Paywall, useEntitled } from "@/components/Paywall";
 import { calculatePay, dealTotals, fniPayDeals, localMonthKey, money, perfFromDeals } from "@/lib/engine";
 import { INDUSTRY_LABEL, INDUSTRY_UNIT, STATUS_LABEL } from "@/lib/types";
 import { INDUSTRY_DEAL, statusLabel } from "@/lib/industry";
-import { basisGrossLabel, dealMoneyOf, dealUnits, moneyBasis, penetration, productDefs, round1, salespersonReport, spiffTotal, usesProductMenu } from "@/lib/fni";
+import { basisGrossLabel, dealMoneyOf, dealUnits, moneyBasis, penetration, productDefs, round1, salespersonReport, spiffTotal, usesProductMenu, vscIdOf } from "@/lib/fni";
 
 // The month-end report — THE LOGG's closing ritual, one tap. Ties the deal
 // log to the paycheck to the penny, in a layout built to be PRINTED or saved
@@ -63,7 +63,7 @@ function Report() {
     // product-only. The rep report and deal log below keep the full `delivered`
     // set (a salesperson still gets the unit on a house/DNQ deal).
     const retail = fniPayDeals(plan, delivered);
-    const pay = calculatePay(plan, perfFromDeals(retail));
+    const pay = calculatePay(plan, perfFromDeals(retail, vscIdOf(profile)));
     const spiffs = fni ? spiffTotal(retail, defs) : 0;
 
     const units = dealTotals(retail).units;

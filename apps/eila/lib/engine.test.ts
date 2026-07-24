@@ -195,6 +195,26 @@ describe("Aaron's July shape — 36 retail touches, both grid bonuses fire (regr
   });
 });
 
+describe("VSC bonus is menu-aware — a custom VSC product id still fires the 50% kicker (regression: 'get VSC to 50%' when already over)", () => {
+  // Aaron's real menu stores VSC under a generated id, not the literal "vsc".
+  const CUSTOM_VSC = "pmrpmkmsk3";
+  // 20 retail cars, ALL carrying the custom-id VSC (100% penetration), PVR $1,500
+  // (below the $1,900 kicker) so ONLY the VSC bonus is in play.
+  const deals: Deal[] = Array.from({ length: 20 }, () =>
+    deal({ status: "delivered", amount: 15000, secondary: 1500, addons: 1, products: [CUSTOM_VSC] }),
+  );
+
+  it("with the literal 'vsc' id (the OLD hardcoded behavior) the engine reads 0% and the bonus does NOT fire", () => {
+    const f = forecast(kennesawFinancePlan(), deals, NOW, [], "vsc");
+    expect(f.current.rateBreakdown!.bonusRate).toBe(0); // wrongly nags "get to 50%"
+  });
+
+  it("with the menu-resolved custom id the engine reads 100% and the +0.5% VSC bonus fires", () => {
+    const f = forecast(kennesawFinancePlan(), deals, NOW, [], CUSTOM_VSC);
+    expect(f.current.rateBreakdown!.bonusRate).toBe(0.5); // VSC kicker only (PVR $1,500 < $1,900)
+  });
+});
+
 describe("forecast() — banked / likely / best", () => {
   it("current is banked (delivered only); best includes all pipeline; likely sits between", () => {
     const deals = [

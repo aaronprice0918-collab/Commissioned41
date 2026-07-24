@@ -5,6 +5,7 @@ import { useMission } from "@/lib/store";
 import { INDUSTRY_UNIT } from "@/lib/types";
 import { useAskIla } from "./AppShell";
 import { forecast, monthBounds, money } from "@/lib/engine";
+import { vscIdOf } from "@/lib/fni";
 import { coach, todaysMission } from "@/lib/coach";
 import { billsRemaining, dailyBudget, incomeExpectation } from "@/lib/money/engine";
 import { defaultMoneyConfig } from "@/lib/money/types";
@@ -20,10 +21,11 @@ export function DailyBrief({ open, onClose }: { open: boolean; onClose: () => vo
   const plan = data.profile.plan;
   const industry = data.profile.industry ?? "automotive";
 
-  const f = forecast(plan, data.deals, new Date(), data.profile?.daysOff ?? []);
+  const vscId = vscIdOf(data.profile);
+  const f = forecast(plan, data.deals, new Date(), data.profile?.daysOff ?? [], vscId);
   const cur = f.current;
-  const mission = todaysMission(plan, data.deals, industry, new Date(), data.profile?.daysOff ?? []);
-  const insights = coach(plan, data.deals, industry, new Date(), data.profile?.daysOff ?? []).slice(0, 3);
+  const mission = todaysMission(plan, data.deals, industry, new Date(), data.profile?.daysOff ?? [], vscId);
+  const insights = coach(plan, data.deals, industry, new Date(), data.profile?.daysOff ?? [], vscId).slice(0, 3);
   const { daysRemaining } = monthBounds();
   const goalGap = Math.max((plan.goalUnits || 0) - f.paceUnits, 0);
   const due = data.deals.filter((d) => d.followUpAt && new Date(d.followUpAt) <= endToday() && d.status !== "delivered" && d.status !== "dead");

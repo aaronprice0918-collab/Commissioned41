@@ -63,20 +63,22 @@ const VSC_PRODUCT_ID = "vsc";
 
 function productPenetration(deals: Deal[], productId: string): number | undefined {
   // Penetration is "% of CARS carrying this product" — product-only deals aren't
-  // cars, so they're out of both the numerator and denominator.
-  const cars = deals.filter((d) => !isProductOnly(d));
+  // cars and no-qualify (DNQ/house) deals can't carry F&I products, so both are
+  // out of the numerator AND denominator. Same rule as fni.ts vscPenetrationPct,
+  // so the pay engine's VSC% and the on-screen VSC% can't disagree.
+  const cars = deals.filter((d) => !isProductOnly(d) && !d.noQualify);
   if (!cars.length) return undefined;
   if (!cars.some((d) => Array.isArray(d.products))) return undefined;
   return (cars.filter((d) => d.products?.includes(productId)).length / cars.length) * 100;
 }
 
-export function perfFromDeals(deals: Deal[]): PerfInput {
+export function perfFromDeals(deals: Deal[], vscId: string = VSC_PRODUCT_ID): PerfInput {
   const t = dealTotals(deals);
   // Deal rows ride along so perDeal rules pay each deal on ITS OWN gross —
   // a loser deal pays the plan's mini instead of dragging the month down.
   // Product-only deals (no core sale) aren't per-car rows.
   const dealRows = deals.filter((d) => !isProductOnly(d)).map((d) => ({ front: d.amount, category: d.category || undefined }));
-  const vscPenetration = productPenetration(deals, VSC_PRODUCT_ID);
+  const vscPenetration = productPenetration(deals, vscId);
   return {
     units: t.units, frontGross: t.primary, backGross: t.secondary, products: t.addons, dealRows, fastStartUnits: fastStart(deals),
     ...(vscPenetration !== undefined ? { vscPenetration } : {}),
@@ -89,10 +91,10 @@ function fastStart(deals: Deal[]): number {
   return deals.filter((d) => !isProductOnly(d) && new Date(d.date).getDate() <= 15).length;
 }
 
-function scaledPerf(deals: Deal[], factor: number): PerfInput {
+function scaledPerf(deals: Deal[], factor: number, vscId: string = VSC_PRODUCT_ID): PerfInput {
   const t = dealTotals(deals);
   const dealRows = deals.filter((d) => !isProductOnly(d)).map((d) => ({ front: d.amount, category: d.category || undefined, weight: factor }));
-  const vscPenetration = productPenetration(deals, VSC_PRODUCT_ID);
+  const vscPenetration = productPenetration(deals, vscId);
   return {
     units: t.units * factor, frontGross: t.primary * factor, backGross: t.secondary * factor, products: t.addons * factor, dealRows, fastStartUnits: fastStart(deals) * factor,
     ...(vscPenetration !== undefined ? { vscPenetration } : {}),
@@ -224,7 +226,12 @@ export function fniPayDeals(plan: PayPlan, deals: Deal[]): Deal[] {
   return plan.grid?.basis === "back" ? deals.filter((d) => !d.noQualify) : deals;
 }
 
-export function forecast(plan: PayPlan, deals: Deal[], now = new Date(), daysOff: number[] = []): Forecast {
+// vscId: the product id that IS "VSC" in the user's own menu. Callers resolve it
+// once via resolveVscId(productDefs(profile)) and pass it here so the pay engine's
+// VSC penetration (the vsc50 bonus + "get to 50%" coaching) counts the SAME product
+// the on-screen VSC% does. Defaults to the literal "vsc" for plans/tests with the
+// standard menu. Get this wrong and the bonus reads ~0% on a custom-labeled VSC.
+export function forecast(plan: PayPlan, deals: Deal[], now = new Date(), daysOff: number[] = [], vscId: string = VSC_PRODUCT_ID): Forecast {
   const month = deals.filter((d) => isThisMonth(d.date, now) && d.status !== "dead");
   const delivered = month.filter((d) => d.status === "delivered");
   // RETAIL TOUCHES — the LOGG rule, applied ONCE here so every surface that reads
@@ -239,13 +246,13 @@ export function forecast(plan: PayPlan, deals: Deal[], now = new Date(), daysOff
   const payCounted = fniPayDeals(plan, counted);
   const payPipeline = fniPayDeals(plan, pipeline);
 
-  const countedPerf = perfFromDeals(payCounted);
+  const countedPerf = perfFromDeals(payCounted, vscId);
   const current = calculatePay(plan, countedPerf);
-  const best = calculatePay(plan, perfFromDeals([...payCounted, ...payPipeline]));
+  const best = calculatePay(plan, perfFromDeals([...payCounted, ...payPipeline], vscId));
 
   // weighted "likely": each pipeline deal scaled by its stage probability
   let weighted = countedPerf;
-  for (const d of payPipeline) weighted = combine(weighted, scaledPerf([d], STATUS_WEIGHT[d.status]));
+  for (const d of payPipeline) weighted = combine(weighted, scaledPerf([d], STATUS_WEIGHT[d.status], vscId));
   const likely = calculatePay(plan, weighted);
 
   // pace: extrapolate delivered units over the user's WORKING month — a rep
@@ -263,7 +270,7 @@ export function forecast(plan: PayPlan, deals: Deal[], now = new Date(), daysOff
   const countedUnits = countedPerf.units;
   const paceUnits = Math.round((countedUnits / workedSoFar) * workTotal);
   const factor = countedUnits > 0 ? paceUnits / countedUnits : 0;
-  const pacePerf = factor > 0 ? scaledPerf(payCounted, factor) : countedPerf;
+  const pacePerf = factor > 0 ? scaledPerf(payCounted, factor, vscId) : countedPerf;
   const pace = calculatePay(plan, pacePerf);
   const pacePay = pace.grossPay;
 

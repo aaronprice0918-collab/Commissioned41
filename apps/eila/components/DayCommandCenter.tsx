@@ -10,6 +10,7 @@ import type { Deal, LifeItem, LifeItemKind } from "@/lib/types";
 import { STATUS_LABEL } from "@/lib/types";
 import { statusLabel } from "@/lib/industry";
 import { calculatePay, followUpQueue, forecast, localMonthKey, money, perfFromDeals } from "@/lib/engine";
+import { vscIdOf } from "@/lib/fni";
 import { dailyBudget, incomeExpectation } from "@/lib/money/engine";
 import { defaultMoneyConfig } from "@/lib/money/types";
 import { SectionTitle } from "./ui";
@@ -36,8 +37,8 @@ export function DayCommandCenter() {
     const monthKey = localMonthKey(new Date().toISOString());
     const delivered = data.deals.filter((d) => d.status === "delivered" && localMonthKey(d.date) === monthKey);
     const live = data.deals.filter((d) => d.status !== "delivered" && d.status !== "dead");
-    const pay = calculatePay(profile.plan, perfFromDeals(delivered));
-    const f = forecast(profile.plan, data.deals, new Date(), profile.daysOff ?? []);
+    const pay = calculatePay(profile.plan, perfFromDeals(delivered, vscIdOf(profile)));
+    const f = forecast(profile.plan, data.deals, new Date(), profile.daysOff ?? [], vscIdOf(profile));
     const moneyCfg = profile.money ?? defaultMoneyConfig();
     const income = incomeExpectation(f.likely.grossPay, moneyCfg.paydays ?? moneyCfg.payday, new Date(), profile.plan.taxRate, moneyCfg.checkNets);
     const dayMoney = dailyBudget(moneyCfg, income, new Date());

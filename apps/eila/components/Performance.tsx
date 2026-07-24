@@ -10,7 +10,7 @@ import { ProgressBoard } from "./ProgressBoard";
 import { fniPayDeals, forecast, isProductOnly, localMonthKey, money, perfFromDeals } from "@/lib/engine";
 import { Deal, DealStatus, INDUSTRY_UNIT, STATUS_LABEL } from "@/lib/types";
 import { INDUSTRY_DEAL, localizeUnits, statusLabel } from "@/lib/industry";
-import { dealMoneyOf, moneyBasis, penetration, productDefs, round1, salespersonReport, spiffTotal, usesProductMenu, vscPenetrationPct } from "@/lib/fni";
+import { dealMoneyOf, moneyBasis, penetration, productDefs, round1, salespersonReport, spiffTotal, usesProductMenu, vscIdOf, vscPenetrationPct } from "@/lib/fni";
 import { fniPayPicture, isFinanceGridPlan, type FniPayPicture } from "@/lib/fniPay";
 import type { BonusRule, Condition, Metric, PayPlan, PayResult, PerfInput } from "@/lib/payplan/types";
 
@@ -67,7 +67,7 @@ export function Performance() {
   }, []);
 
   const now = new Date();
-  const f = useMemo(() => forecast(plan, data.deals, now, profile.daysOff ?? []), [plan, data.deals, profile.daysOff]); // eslint-disable-line react-hooks/exhaustive-deps
+  const f = useMemo(() => forecast(plan, data.deals, now, profile.daysOff ?? [], vscIdOf(profile)), [plan, data.deals, profile.daysOff]); // eslint-disable-line react-hooks/exhaustive-deps
   const monthName = now.toLocaleDateString(undefined, { month: "long", year: "numeric" });
 
   // Money is counted on whatever channel the USER'S plan pays on — back
@@ -160,7 +160,7 @@ export function Performance() {
   // Pay-plan status (PVR/PPU/bonus checks) must read the SAME retail basis the
   // grid pays on — else it shows PVR $1,580 (all cars) next to a base rate on
   // $1,733 (retail). fniPayDeals drops no-qualify for an F&I grid.
-  const currentPerf = useMemo(() => perfFromDeals(fniPayDeals(plan, f.counted)), [plan, f.counted]);
+  const currentPerf = useMemo(() => perfFromDeals(fniPayDeals(plan, f.counted), vscIdOf(profile)), [plan, f.counted, profile]);
   const statusRows = useMemo(() => payStatusRows(plan, f.current, currentPerf), [plan, f.current, currentPerf]);
   const bestMove = f.current.nextTiers[0];
 

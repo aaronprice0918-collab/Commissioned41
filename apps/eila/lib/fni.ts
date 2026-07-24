@@ -52,6 +52,13 @@ export function resolveVscId(defs: ProductDef[]): string | undefined {
   return (defs.find((d) => d.id === "vsc") ?? defs.find((d) => /\bv\.?s\.?c\b|service\s*contract/i.test(d.label)))?.id;
 }
 
+// The user's VSC product id straight from their profile menu — the single value
+// every forecast()/coach()/todaysMission() call passes so the pay engine's VSC
+// penetration (vsc50 bonus + coaching) counts the same product the screens do.
+export function vscIdOf(profile: Profile | null): string | undefined {
+  return resolveVscId(productDefs(profile));
+}
+
 // % of retail cars carrying VSC — the one number every VSC display should use.
 // Denominator = cars that could take VSC (not product-only, not a house/DNQ deal).
 export function vscPenetrationPct(deals: Deal[], defs: ProductDef[]): number {

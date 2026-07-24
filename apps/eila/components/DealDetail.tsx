@@ -13,7 +13,7 @@ import { INDUSTRY_DEAL, statusLabel } from "@/lib/industry";
 import { calculatePay, localMonthKey, money, perfFromDeals } from "@/lib/engine";
 import { changedFields } from "@/lib/mergeEdits";
 import { perDealPay } from "@/lib/payplan/calc";
-import { dealUnits, productDefs, spiffTotal, usesProductMenu } from "@/lib/fni";
+import { dealUnits, productDefs, resolveVscId, spiffTotal, usesProductMenu } from "@/lib/fni";
 import { jacketFileDaysLeft, jacketFileFresh, openJacketFile } from "@/lib/jacketFile";
 import { CountUp } from "./motion";
 
@@ -59,8 +59,9 @@ export function DealDetail({ id }: { id: string }) {
     // UTC string mis-cohorted evening deals near a month boundary.
     const month = localMonthKey(deal.date);
     const delivered = data.deals.filter((d) => localMonthKey(d.date) === month && d.status === "delivered" && d.id !== deal.id);
-    const without = calculatePay(plan, perfFromDeals(delivered));
-    const withIt = calculatePay(plan, perfFromDeals([...delivered, { ...deal, status: "delivered" }]));
+    const vscId = resolveVscId(defs);
+    const without = calculatePay(plan, perfFromDeals(delivered, vscId));
+    const withIt = calculatePay(plan, perfFromDeals([...delivered, { ...deal, status: "delivered" }], vscId));
     const spiff = fni ? spiffTotal([deal], defs) : 0;
     // A per-deal plan pays a loser deal its mini; say so instead of a bare number.
     const mini = plan.perDeal ? perDealPay(plan.perDeal, deal.amount, deal.category || undefined).mini : false;

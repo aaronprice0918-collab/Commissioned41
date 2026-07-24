@@ -13,6 +13,7 @@ import { useMission } from "@/lib/store";
 import { useAskIla } from "@/components/AppShell";
 import { BankLink } from "@/components/BankLink";
 import { forecast } from "@/lib/engine";
+import { vscIdOf } from "@/lib/fni";
 import { getSupabase } from "@/lib/supabase";
 import { fileToBase64 } from "@/lib/payplan/upload";
 import {
@@ -163,7 +164,7 @@ export function MoneyDashboard() {
     return () => document.removeEventListener("visibilitychange", refresh);
   }, []);
   const f = useMemo(
-    () => forecast(profile.plan, data.deals, now, profile.daysOff ?? []),
+    () => forecast(profile.plan, data.deals, now, profile.daysOff ?? [], vscIdOf(profile)),
     [profile.plan, profile.daysOff, data.deals, now],
   );
   const income = useMemo(

@@ -3,6 +3,7 @@ import webpush from "web-push";
 import { getSupabaseAdmin } from "@/lib/supabaseAdmin";
 import { hasActiveSubscription } from "@/lib/entitlement";
 import { followUpQueue, forecast } from "@/lib/engine";
+import { vscIdOf } from "@/lib/fni";
 import type { AppData } from "@/lib/types";
 
 export const runtime = "nodejs";
@@ -44,7 +45,7 @@ function pickNudge(data: AppData): { title: string; body: string; url: string } 
 
   const goal = data.profile.plan.goalUnits ?? 0;
   if (goal > 0) {
-    const f = forecast(data.profile.plan, deals, new Date(), data.profile.daysOff ?? []);
+    const f = forecast(data.profile.plan, deals, new Date(), data.profile.daysOff ?? [], vscIdOf(data.profile));
     if (f.paceUnits < goal) {
       // Plain, self-explanatory: paceUnits is the projected month-end finish at
       // today's rate. "pacing 27 against a goal of 50" read as a riddle (and when

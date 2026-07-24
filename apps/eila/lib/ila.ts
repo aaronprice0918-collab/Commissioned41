@@ -4,6 +4,7 @@ import { INDUSTRY_LABEL, INDUSTRY_UNIT, ROLE_LABEL } from "./types";
 import type { PayPlan } from "./payplan/types";
 import { dealTotals, followUpQueue, forecast, monthBounds, money, workingDays } from "./engine";
 import { fniPayPicture } from "./fniPay";
+import { productDefs, resolveVscId } from "./fni";
 import { coach, todaysMission } from "./coach";
 import { ilaCore } from "@commissioned41/ila-core/core";
 import { BrainLesson, renderBrain } from "@commissioned41/ila-core/brain";
@@ -76,10 +77,13 @@ export function buildIlaSystemParts(profile: Profile, plan: PayPlan, deals: Deal
   const now = new Date();
   const industry = profile.industry ?? "automotive";
   const daysOff = profile.daysOff ?? [];
-  const f = forecast(plan, deals, now, daysOff);
+  // Resolve VSC against the user's OWN menu once, then feed the same id to the
+  // forecast, the coach, and the mission — so ILA's VSC% can't drift from the app's.
+  const vscId = resolveVscId(productDefs(profile));
+  const f = forecast(plan, deals, now, daysOff, vscId);
   const { daysRemaining, dayOfMonth, daysInMonth } = monthBounds(now);
-  const insights = coach(plan, deals, industry, now, daysOff);
-  const mission = todaysMission(plan, deals, industry, now, daysOff);
+  const insights = coach(plan, deals, industry, now, daysOff, vscId);
+  const mission = todaysMission(plan, deals, industry, now, daysOff, vscId);
 
   // ONE customer-touch rule set (lib/engine.ts followUpQueue — same as the day screen
   // and the nudge cron). The old inline filter used the current INSTANT and

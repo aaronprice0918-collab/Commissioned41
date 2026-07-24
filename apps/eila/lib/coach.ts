@@ -11,10 +11,10 @@ export interface Insight {
 // Rule-based coaching v1 — concrete, money-anchored, driven by the pay-plan
 // engine, spoken in the rep's OWN industry language (closings, policies,
 // installs — never a generic "unit" and never another industry's word).
-export function coach(plan: PayPlan, deals: Deal[], industry: Industry = "automotive", now = new Date(), daysOff: number[] = []): Insight[] {
+export function coach(plan: PayPlan, deals: Deal[], industry: Industry = "automotive", now = new Date(), daysOff: number[] = [], vscId?: string): Insight[] {
   const out: Insight[] = [];
   const unit = INDUSTRY_UNIT[industry];
-  const f = forecast(plan, deals, now, daysOff);
+  const f = forecast(plan, deals, now, daysOff, vscId);
   const { daysRemaining } = monthBounds(now);
 
   // 1) best money opportunity (grid PPU/PVR, bonus, or volume tier)
@@ -56,10 +56,10 @@ export function coach(plan: PayPlan, deals: Deal[], industry: Industry = "automo
   return out.slice(0, 5);
 }
 
-export function todaysMission(plan: PayPlan, deals: Deal[], industry: Industry = "automotive", now = new Date(), daysOff: number[] = []): string {
+export function todaysMission(plan: PayPlan, deals: Deal[], industry: Industry = "automotive", now = new Date(), daysOff: number[] = [], vscId?: string): string {
   const unit = INDUSTRY_UNIT[industry];
   const spec = INDUSTRY_DEAL[industry];
-  const f = forecast(plan, deals, now, daysOff);
+  const f = forecast(plan, deals, now, daysOff, vscId);
   const top = f.current.nextTiers[0];
   if (top && top.addPay > 0) return `${localizeUnits(top.hint, unit)}. That's the best money opportunity today.`;
   if (plan.goalUnits > 0 && f.paceUnits < plan.goalUnits) return `You are still in range of ${plan.goalUnits} ${unit.plural}. Start with the warmest deal, then add one clean appointment.`;

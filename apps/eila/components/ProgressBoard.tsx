@@ -6,7 +6,7 @@ import { useMission } from "@/lib/store";
 import { useAskIla } from "./AppShell";
 import { fniPayDeals, forecast, dealTotals, money } from "@/lib/engine";
 import { INDUSTRY_UNIT } from "@/lib/types";
-import { basisGrossLabel, dealMoneyOf, moneyBasis, productDefs, usesProductMenu, vscPenetrationPct } from "@/lib/fni";
+import { basisGrossLabel, dealMoneyOf, moneyBasis, productDefs, usesProductMenu, vscIdOf, vscPenetrationPct } from "@/lib/fni";
 import type { PayPlan } from "@/lib/payplan/types";
 
 // EILA's month at a glance — a Monarch-style progress board: every number that
@@ -62,7 +62,7 @@ export function ProgressBoard() {
   }, []);
 
   const now = new Date();
-  const f = useMemo(() => forecast(plan, data.deals, now, profile.daysOff ?? []), [plan, data.deals, profile.daysOff]); // eslint-disable-line react-hooks/exhaustive-deps
+  const f = useMemo(() => forecast(plan, data.deals, now, profile.daysOff ?? [], vscIdOf(profile)), [plan, data.deals, profile.daysOff]); // eslint-disable-line react-hooks/exhaustive-deps
   const dayOfMonth = now.getDate();
   const daysInMonth = new Date(now.getFullYear(), now.getMonth() + 1, 0).getDate();
 

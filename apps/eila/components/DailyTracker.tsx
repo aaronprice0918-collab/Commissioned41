@@ -5,6 +5,7 @@ import { CalendarDays } from "lucide-react";
 import { useMission } from "@/lib/store";
 import { useAskIla } from "./AppShell";
 import { forecast, dealTotals, isProductOnly } from "@/lib/engine";
+import { vscIdOf } from "@/lib/fni";
 import { INDUSTRY_UNIT } from "@/lib/types";
 
 // Your daily sales tracker — the individual version of Aaron's Kennesaw
@@ -37,7 +38,7 @@ export function DailyTracker() {
   const daysInMonth = new Date(year, month + 1, 0).getDate();
   const monthName = now.toLocaleDateString(undefined, { month: "long", year: "numeric" });
 
-  const f = useMemo(() => forecast(plan, data.deals, now, daysOff), [plan, data.deals, daysOff]); // eslint-disable-line react-hooks/exhaustive-deps
+  const f = useMemo(() => forecast(plan, data.deals, now, daysOff, vscIdOf(profile)), [plan, data.deals, daysOff]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Units per day-of-month (vehicle units only — product-only deals sell no car
   // and never count toward the daily board, same rule as everywhere else).

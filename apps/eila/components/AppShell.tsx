@@ -17,6 +17,7 @@ import { Wordmark } from "./Brand";
 import { UpdatePrompt } from "./UpdatePrompt";
 import { Paywall, useEntitled } from "./Paywall";
 import { forecast, money } from "@/lib/engine";
+import { vscIdOf } from "@/lib/fni";
 import { todaysMission } from "@/lib/coach";
 import { dailyBudget, incomeExpectation } from "@/lib/money/engine";
 import { defaultMoneyConfig } from "@/lib/money/types";
@@ -60,8 +61,9 @@ export function AppShell({ active, children, wide }: { active: AppSection; child
   const dayPulse = useMemo(() => {
     if (!data.profile) return null;
     const now = new Date();
-    const f = forecast(data.profile.plan, data.deals, now, data.profile.daysOff ?? []);
-    const mission = todaysMission(data.profile.plan, data.deals, data.profile.industry, now, data.profile.daysOff ?? []);
+    const vscId = vscIdOf(data.profile);
+    const f = forecast(data.profile.plan, data.deals, now, data.profile.daysOff ?? [], vscId);
+    const mission = todaysMission(data.profile.plan, data.deals, data.profile.industry, now, data.profile.daysOff ?? [], vscId);
     const cfg = data.profile.money ?? defaultMoneyConfig();
     const income = incomeExpectation(
       f.likely.grossPay,

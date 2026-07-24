@@ -23,7 +23,7 @@ import {
   type SpiffPlan,
   type SpiffResult,
 } from "./payplan/spiffs";
-import { productDefs } from "./fni";
+import { productDefs, resolveVscId } from "./fni";
 
 export interface FniPayPicture {
   units: number;
@@ -61,7 +61,7 @@ export function fniPayPicture(
   // manager's PVR/PPU denominator and F&I gross, so drop them here before the math.
   const retail = counted.filter((d) => !d.noQualify);
   const defs = productDefs(profile);
-  const pay = calculatePay(plan, perfFromDeals(retail));
+  const pay = calculatePay(plan, perfFromDeals(retail, resolveVscId(defs)));
   const sIn = fniSpiffInput(retail, defs);
   const spiffs = computeSpiffs(spiffPlan, sIn);
 
