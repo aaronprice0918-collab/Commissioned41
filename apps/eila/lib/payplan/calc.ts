@@ -280,23 +280,43 @@ export function calculatePay(plan: PayPlan, perf: PerfInput): PayResult {
   }
 
   let grossPay = Math.max(0, grossBeforePenalty + sum(penalties) + sum(deductions));
-  if (plan.guaranteeFloor && grossPay < plan.guaranteeFloor) {
-    steps.push({ label: "Guarantee floor", detail: `Earned ${money(grossPay)} → raised to guarantee ${money(plan.guaranteeFloor)}` });
-    grossPay = plan.guaranteeFloor;
+  // A NON-recoverable draw is not an advance to repay — it's a guaranteed
+  // minimum the rep KEEPS (the standard new-hire guarantee). So it floors pay
+  // exactly like guaranteeFloor. Treating it as debt (which this did for every
+  // draw, ignoring the `recoverable` flag) told those reps they were "in the
+  // hole" and owed back money that was actually theirs.
+  const nonRecoverableFloor = plan.draw && plan.draw.recoverable === false ? plan.draw.amount : 0;
+  const floor = Math.max(plan.guaranteeFloor ?? 0, nonRecoverableFloor);
+  if (floor && grossPay < floor) {
+    const label = nonRecoverableFloor >= (plan.guaranteeFloor ?? 0) && nonRecoverableFloor > 0 ? "Non-recoverable draw (guaranteed)" : "Guarantee floor";
+    steps.push({ label, detail: `Earned ${money(grossPay)} → raised to ${money(floor)}` });
+    grossPay = floor;
   }
   steps.push({ label: "Earned this month", detail: money(grossPay) });
 
-  // 6) draw — a recoverable draw is an ADVANCE against earnings that rolls over:
+  // 6) draw — a RECOVERABLE draw is an ADVANCE against earnings that rolls over:
   // earnings pay down (prior balance carried in + this month's advance), and any
   // shortfall becomes next month's carried balance. "The hole" is what's still owed.
+  // A non-recoverable draw never creates a hole — it was floored into grossPay
+  // above and is never owed back, so its balance/shortfall stay $0.
+  const recoverable = plan.draw?.recoverable !== false;
   const draw = plan.draw?.amount ?? 0;
-  const carriedIn = plan.drawCarriedIn ?? 0;
-  const drawOffset = Math.min(draw, grossPay);
+  const recoverableDraw = recoverable ? draw : 0;
+  const carriedIn = recoverable ? plan.drawCarriedIn ?? 0 : 0;
+  const drawOffset = Math.min(recoverableDraw, grossPay);
   const remainderAfterDraw = round2(grossPay - drawOffset);
-  const drawShortfall = round2(Math.max(0, draw - grossPay)); // this month's unrecouped advance
-  const drawOwed = round2(Math.max(0, carriedIn + draw - grossPay)); // total still owed = the hole
-  const aboveDraw = round2(Math.max(0, grossPay - draw - carriedIn)); // real earnings beyond every advance
-  if (draw) steps.push({ label: "Draw already paid", detail: `${money(draw)} advance → remaining check ≈ ${money(remainderAfterDraw)}` });
+  const drawShortfall = round2(Math.max(0, recoverableDraw - grossPay)); // this month's unrecouped advance
+  const drawOwed = round2(Math.max(0, carriedIn + recoverableDraw - grossPay)); // total still owed = the hole
+  // Earnings beyond every advance. For a non-recoverable draw the meaningful
+  // line is still "commission beyond the guarantee" — upside, not debt repaid.
+  const aboveDraw = round2(Math.max(0, grossPay - draw - carriedIn));
+  if (draw) {
+    steps.push(
+      recoverable
+        ? { label: "Draw already paid", detail: `${money(draw)} advance → remaining check ≈ ${money(remainderAfterDraw)}` }
+        : { label: "Draw (non-recoverable)", detail: `${money(draw)} guaranteed — kept, not owed back; commission beyond it ≈ ${money(aboveDraw)}` },
+    );
+  }
 
   const netAfterTax = plan.taxRate ? grossPay * (1 - plan.taxRate / 100) : grossPay;
 

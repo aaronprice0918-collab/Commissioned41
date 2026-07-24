@@ -23,6 +23,12 @@ export function makePlan(p: Omit<Partial<PayPlan>, "base"> & { role: string; bas
     guaranteeFloor: p.guaranteeFloor, // was silently dropped — parsed/migrated plans lost their guarantee (July 5 audit)
     goalUnits: p.goalUnits ?? 0,
     taxRate: p.taxRate ?? 0,
+    // Same silent-drop bug as guaranteeFloor above (found July 24): rebuilding a
+    // plan through makePlan wiped the rep's OWN take-home goal (the Climb summit)
+    // and their carried-in draw balance — so a re-parsed or migrated plan quietly
+    // forgot advance money still owed, and the goal they set for themselves.
+    takeHomeGoal: p.takeHomeGoal,
+    drawCarriedIn: p.drawCarriedIn,
     unsupported: p.unsupported ?? [],
     confidence: p.confidence ?? 0.7,
   };
