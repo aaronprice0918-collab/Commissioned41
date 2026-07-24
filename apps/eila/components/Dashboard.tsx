@@ -10,6 +10,7 @@ import { coach, todaysMission, Insight } from "@/lib/coach";
 import { INDUSTRY_UNIT, ROLE_LABEL } from "@/lib/types";
 import { INDUSTRY_DEAL, localizeUnits, statusLabel } from "@/lib/industry";
 import { basisGrossLabel, dealMoneyOf, moneyBasis, vscIdOf } from "@/lib/fni";
+import { auditDeals } from "@/lib/selfAudit";
 import type { NextTier, PlanType } from "@/lib/payplan/types";
 import { Stat, SectionTitle, Drawer } from "./ui";
 import { CountUp, ProgressRing } from "./motion";
@@ -45,13 +46,16 @@ export function Dashboard() {
       pending: f.pipeline.filter((d) => d.status === "pending").length,
       finance: f.pipeline.filter((d) => d.status === "finance").length,
     };
-    return { f, live, insights, mission, daysRemaining, counts, touchQueue, todayLife };
+    // EILA checks her own numbers on every render — miscounted deals surface
+    // here instead of waiting for the user to notice their units look wrong.
+    const audit = auditDeals(data.deals, profile);
+    return { f, live, insights, mission, daysRemaining, counts, touchQueue, todayLife, audit };
     // profile.daysOff MUST be a dep: the Dashboard stays mounted under the
     // Settings/EILA overlays, and a days-off change there left pace/paycheck/
     // today's focus computed on the old schedule (July 8 audit, confirmed).
   }, [plan, data.deals, data.lifeItems, profile.industry, profile.daysOff]);
 
-  const { f, live, insights, mission, daysRemaining, counts, touchQueue, todayLife } = v;
+  const { f, live, insights, mission, daysRemaining, counts, touchQueue, todayLife, audit } = v;
   const cur = f.current;
   const goalPct = plan.goalUnits ? (f.totals.units / plan.goalUnits) * 100 : 0;
   const unit = INDUSTRY_UNIT[profile.industry];
@@ -292,6 +296,25 @@ export function Dashboard() {
           <Info size={15} className="mt-0.5 shrink-0 text-accent2" />
           <span>This estimate assumes no penalties. Add your {cur.missingData.join(", ")} in Settings to sharpen it.</span>
         </div>
+      )}
+
+      {/* EILA's self-audit — she flags deals counted as cars that aren't, BEFORE
+          the user notices their units/PVR look wrong (Aaron, July 2026). */}
+      {audit.findings.length > 0 && (
+        <button
+          className="glass rise mt-3 block w-full p-4 text-left"
+          style={{ borderLeft: "3px solid rgb(var(--warn))" }}
+          onClick={() => askIla(`Audit my numbers — ${audit.findings.length} of my deals look like they're being counted as ${unit.plural} when they shouldn't be. Show me which ones and why, then fix them.`)}
+        >
+          <div className="text-[11px] font-semibold uppercase tracking-wider text-warn">Your numbers need a look</div>
+          <div className="mt-1 text-sm font-semibold text-fg">
+            {audit.findings.length} {audit.findings.length === 1 ? "deal is" : "deals are"} counting as {audit.findings.length === 1 ? "a car" : "cars"} but {audit.findings.length === 1 ? "doesn't" : "don't"} look like {audit.findings.length === 1 ? "one" : "any"}
+          </div>
+          <div className="mt-1 text-xs text-fg/60">
+            Fixing {audit.findings.length === 1 ? "it" : "them"} moves you from{" "}
+            <b className="tabnum text-fg/80">{audit.unitsNow}</b> to <b className="tabnum text-fg/80">{audit.unitsAfter}</b> {unit.plural} and raises your per-{unit.singular} average. Tap and I&apos;ll walk you through it.
+          </div>
+        </button>
       )}
 
       {/* Coach */}

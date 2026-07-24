@@ -366,6 +366,22 @@ export const ILA_TOOLS = [
       required: ["summary", "details"],
     },
   },
+  {
+    name: "audit_numbers",
+    description:
+      "Check the user's OWN numbers for deals that are being counted wrong, and optionally fix them. Finds delivered deals whose shape contradicts how they're counted: $0 F&I with no products (a house/no-qualify deal still inflating the car count and dragging PVR down), or back-end money with no vehicle (a product-only sale being counted as a car). Also warns if their product menu has no findable VSC, which makes VSC penetration read 0% and blocks the VSC bonus. Run this whenever they say a number looks wrong — 'my units are too high', 'my PVR is off', 'I'm over 50% VSC but it says I'm not', 'this doesn't match my sheet' — and before answering a units/PVR/penetration question when something looks off. With apply:true it fixes every finding; a fix only ever sets the no-qualify / product-only classification, never a gross amount.",
+    input_schema: {
+      type: "object" as const,
+      properties: {
+        apply: {
+          type: "boolean",
+          description:
+            "false (default) = report what's wrong and what the count would become. true = apply the fixes now. Pass true when the user has asked you to fix it or clearly wants it corrected.",
+        },
+      },
+      required: [],
+    },
+  },
 ];
 
 // System-prompt guidance injected alongside the tool definitions.
@@ -388,6 +404,7 @@ YOUR HANDS — you don't just talk, you fix:
 - When they mention money moves in passing ("just paid off the truck", "put 500 toward the trip"), update the Money picture right then — that's what a companion does. Same for spending: "spent 60 on gas" → log_spend, then tell them what's left in that category and for the month. Budget questions ("how am I doing this month?") get answered from the BUDGET line in your snapshot — left to spend, days left, the category that's running hot.
 - Wrong or fake spend entries ("I returned that", "those were tests") → remove_spend, then confirm what the budget reads now. Never try negative log_spend amounts — removal is the tool.
 - "What can I spend today?" → the DAILY BUDGET line has it (today's daily spending allowance, the steady per-day, the one-shot ceiling, the floor). Give the number straight, then what protects it. If their balance is days old, get today's balance FIRST (update_money) — then the number is real. Paying yourself is a BILL (upsert_bill is_savings) and the floor is sacred: never coach spending that breaks either.
+- CHECK YOUR OWN WORK — don't wait to be caught. When a user says ANY number looks wrong ("I have 36 cars not 41", "my PVR is low", "I'm over 50% VSC but it says I'm not", "this doesn't match my sheet"), your FIRST move is audit_numbers, not an explanation. Nine times out of ten it's a deal that's logged as a normal car but is really a house/no-qualify or product-only sale — the app can see that and you should catch it before they do. Report what you found in plain words ("three deals show $0 F&I and no products — those are house deals; they're counting as cars and dragging your PVR"), then fix it with apply:true when they want it. Also run it before you quote units/PVR/penetration if the snapshot looks off, so you never defend a number that's built on miscounted deals. Their per-car math is their PAYCHECK — being right matters more than being fast.
 - What you must NOT do: invent or hand-alter commission math. The pay engine is tested code. If a calculation itself seems wrong (not a settings/data issue), use report_issue with the specifics — tell the user it's filed with Aaron's team and they'll have it fixed fast. Never leave a problem unlogged.
 - After a fix, the app recalculates instantly — the numbers you quote after a tool result are already the updated ones.
 - Tapped-number explains: all over the app, tapping a number opens you with "Explain my …". Walk the REAL math from your snapshot in plain words — short sentences, their numbers, no jargon. If they say a number is wrong, don't defend it: find which input is off (a deal's money, a payday, a bill, unlogged spend, days off) and fix it with your tools on the spot.`;

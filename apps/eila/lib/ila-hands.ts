@@ -4,6 +4,8 @@
 // so her hands work here, through the same store the user's own taps use.
 
 import type { Deal, IlaMemory, LifeItemKind, ProductDef, Profile } from "./types";
+import { INDUSTRY_UNIT } from "./types";
+import { auditDeals, auditSummary, patchForFinding } from "./selfAudit";
 import type { PayPlan } from "./payplan/types";
 import { classifyPlan } from "./payplan/calc";
 import { dealUnits, productDefs, vscIdOf } from "./fni";
@@ -692,6 +694,39 @@ export async function executeIlaTool(call: IlaToolCall, ctx: HandsCtx): Promise<
           };
         }
         return { content: "Filed with Aaron's team and delivered to their alert channel, with full context.", friendly: "✓ Filed to Aaron's team" };
+      }
+
+      case "audit_numbers": {
+        const audit = auditDeals(ctx.deals, ctx.profile);
+        const unit = INDUSTRY_UNIT[ctx.profile.industry ?? "automotive"];
+        if (!audit.findings.length) {
+          const clean = auditSummary(audit, unit.plural);
+          return {
+            content: audit.vscMenuWarning
+              ? `No miscounted deals this month. BUT: ${audit.vscMenuWarning} Tell the user that plainly.`
+              : `${clean} Nothing to fix — say so plainly and don't invent a problem.`,
+            friendly: "✓ Numbers check out",
+          };
+        }
+
+        const detail = audit.findings.map((f) => `- ${f.reason}`).join("\n");
+        if (call.input.apply !== true) {
+          return {
+            content:
+              `${auditSummary(audit, unit.plural)}\n${detail}\n` +
+              `${audit.vscMenuWarning ? `Also: ${audit.vscMenuWarning}\n` : ""}` +
+              `Walk the user through what you found in plain words, then offer to fix it — when they say yes, call audit_numbers again with apply:true.`,
+            friendly: `${audit.findings.length} deal${audit.findings.length === 1 ? "" : "s"} counted wrong`,
+          };
+        }
+
+        for (const f of audit.findings) ctx.updateDeal(f.dealId, patchForFinding(f.kind));
+        return {
+          content:
+            `Fixed ${audit.findings.length} deal${audit.findings.length === 1 ? "" : "s"}. Their ${unit.singular} count moves from ${audit.unitsNow} to ${audit.unitsAfter}, which raises every per-${unit.singular} average (PVR, products per deal, penetration) — those now divide by real retail ${unit.plural} only. Confirm what changed in ONE sentence and give them the corrected count.` +
+            `${audit.vscMenuWarning ? ` Also still true: ${audit.vscMenuWarning}` : ""}`,
+          friendly: `✓ Fixed — ${audit.unitsNow} → ${audit.unitsAfter} ${unit.plural}`,
+        };
       }
 
       case "set_pay_goal": {
