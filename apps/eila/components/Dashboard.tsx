@@ -52,7 +52,7 @@ export function Dashboard() {
 
   const { f, live, insights, mission, daysRemaining, counts, touchQueue, todayLife } = v;
   const cur = f.current;
-  const goalPct = plan.goalUnits ? (f.counted.length / plan.goalUnits) * 100 : 0;
+  const goalPct = plan.goalUnits ? (f.totals.units / plan.goalUnits) * 100 : 0;
   const unit = INDUSTRY_UNIT[profile.industry];
   const spec = INDUSTRY_DEAL[profile.industry];
   const fastestMove = cur.nextTiers[0];
@@ -71,9 +71,9 @@ export function Dashboard() {
         confidence={Math.round(cur.confidence * 100)}
         earned={cur.grossPay}
         likely={f.likely.grossPay}
-        closed={f.counted.length}
+        closed={f.totals.units}
         liveCount={liveCount}
-        unitLabel={f.counted.length === 1 ? unit.singular : unit.plural}
+        unitLabel={f.totals.units === 1 ? unit.singular : unit.plural}
         hasSampleData={hasSampleData}
         onPlan={() => askIla("Make today feel simple. Give me a positive day plan with one calm first step.")}
       />
@@ -192,12 +192,12 @@ export function Dashboard() {
             <div className="mt-0.5 text-[15px] leading-snug text-fg/90">
               {goalPct >= 100 ? (
                 <span className="inline-flex items-center gap-1.5 font-bold text-good">
-                  <Trophy size={15} /> Goal hit — {f.counted.length} of {plan.goalUnits} {unit.plural}!
+                  <Trophy size={15} /> Goal hit — {f.totals.units} of {plan.goalUnits} {unit.plural}!
                 </span>
               ) : (
                 <>
-                  <span className="font-bold tabnum text-fg">{f.counted.length}</span> of {plan.goalUnits} {unit.plural} ·{" "}
-                  <span className="tabnum">{plan.goalUnits - f.counted.length}</span> to go
+                  <span className="font-bold tabnum text-fg">{f.totals.units}</span> of {plan.goalUnits} {unit.plural} ·{" "}
+                  <span className="tabnum">{plan.goalUnits - f.totals.units}</span> to go
                 </>
               )}
             </div>
@@ -246,7 +246,7 @@ export function Dashboard() {
           figure counts the channel THEIR plan pays on (an F&I manager sees
           back gross and true PVR, not the store's blended number). */}
       <div className="mt-4 grid grid-cols-2 gap-3">
-        <Stat label={`${cap(unit.plural)} closed`} value={`${f.counted.length}`} hint={plan.goalUnits ? `Goal ${plan.goalUnits} · ${Math.round(goalPct)}%` : undefined} accent onClick={() => askIla(`Which ${unit.plural} count as closed this month and which don\u2019t? List them.`)} />
+        <Stat label={`${cap(unit.plural)} closed`} value={`${f.totals.units}`} hint={plan.goalUnits ? `Goal ${plan.goalUnits} · ${Math.round(goalPct)}%` : undefined} accent onClick={() => askIla(`Which ${unit.plural} count as closed this month and which don\u2019t? List them.`)} />
         <Stat label="On pace for" value={`${f.paceUnits} ${unit.plural}`} hint={`≈ ${money(f.pacePay)} month-end`} onClick={() => askIla("Explain my pace number — how you project my month-end from where I am today, including my days off.")} />
         <Stat
           label={spec.secondaryLabel ? basisGrossLabel(basis, profile.industry) : cap(spec.amountLabel)}
@@ -256,12 +256,12 @@ export function Dashboard() {
             basis === "back" ? `front ${money(live.primary)} stays with the store`
             : basis === "front" ? `back ${money(live.secondary)} not counted`
             : spec.secondaryLabel ? `Front ${money(live.primary)} · Back ${money(live.secondary)}`
-            : `across ${f.counted.length} ${f.counted.length === 1 ? unit.singular : unit.plural}`
+            : `across ${f.totals.units} ${f.totals.units === 1 ? unit.singular : unit.plural}`
           }
         />
         <Stat
           label={basis === "back" && spec.secondaryLabel ? "PVR" : `Avg per ${unit.singular}`}
-          value={money(f.counted.length ? basisGross / f.counted.length : 0)}
+          value={money(f.totals.units ? basisGross / f.totals.units : 0)}
           hint={spec.addonsLabel ? `${live.addonsPerUnit.toFixed(1)} ${spec.addonsLabel.toLowerCase()}/${unit.singular}` : undefined}
           onClick={() => askIla(`Explain my average per ${unit.singular} — what goes into it and how it compares to what my plan needs.`)}
         />

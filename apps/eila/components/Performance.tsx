@@ -7,7 +7,7 @@ import { useMission } from "@/lib/store";
 import { useAskIla } from "./AppShell";
 import { DailyTracker } from "./DailyTracker";
 import { ProgressBoard } from "./ProgressBoard";
-import { fniPayDeals, forecast, localMonthKey, money, perfFromDeals } from "@/lib/engine";
+import { fniPayDeals, forecast, isProductOnly, localMonthKey, money, perfFromDeals } from "@/lib/engine";
 import { Deal, DealStatus, INDUSTRY_UNIT, STATUS_LABEL } from "@/lib/types";
 import { INDUSTRY_DEAL, localizeUnits, statusLabel } from "@/lib/industry";
 import { dealMoneyOf, moneyBasis, penetration, productDefs, round1, salespersonReport, spiffTotal, usesProductMenu, vscPenetrationPct } from "@/lib/fni";
@@ -81,7 +81,7 @@ export function Performance() {
     return { gross, count: f.pipeline.length };
   }, [f.pipeline, dealMoney]);
 
-  const goalPct = plan.goalUnits ? Math.min(100, (f.counted.length / plan.goalUnits) * 100) : 0;
+  const goalPct = plan.goalUnits ? Math.min(100, (f.totals.units / plan.goalUnits) * 100) : 0;
 
   // Cumulative closed gross by day-of-month (the trend widget).
   const trend = useMemo(() => {
@@ -97,7 +97,8 @@ export function Performance() {
 
   // Volume buckets: months when there's history, weeks of this month when not.
   const volume = useMemo(() => {
-    const delivered = data.deals.filter((d) => d.status === "delivered");
+    // Retail cars only (New/Used/CPO) — DNQ and product-only aren't delivered units.
+    const delivered = data.deals.filter((d) => d.status === "delivered" && !d.noQualify && !isProductOnly(d));
     const monthsSeen = new Set(delivered.map((d) => localMonthKey(d.date))); // LOCAL month, same rule as the dashboard
     if (monthsSeen.size >= 2) {
       const buckets: { label: string; value: number }[] = [];
@@ -113,7 +114,7 @@ export function Performance() {
     }
     const buckets = [1, 2, 3, 4, 5].map((w) => ({
       label: `W${w}`,
-      value: f.counted.filter((d) => Math.ceil(new Date(d.date).getDate() / 7) === w).length,
+      value: f.counted.filter((d) => !isProductOnly(d) && Math.ceil(new Date(d.date).getDate() / 7) === w).length,
     }));
     while (buckets.length > 4 && buckets[buckets.length - 1].value === 0) buckets.pop();
     return { title: `${cap(unit.plural)} by week`, buckets };
@@ -140,7 +141,9 @@ export function Performance() {
   const defs = useMemo(() => productDefs(profile), [profile]);
   const pen = useMemo(() => (fni ? penetration(f.counted, defs).filter((p) => p.count > 0) : []), [fni, f.counted, defs]);
   const spiffs = useMemo(() => (fni ? spiffTotal(f.counted, defs) : 0), [fni, f.counted, defs]);
-  const reps = useMemo(() => (fni ? salespersonReport(f.counted, defs).filter((r) => r.retail > 0).slice(0, 6) : []), [fni, f.counted, defs]);
+  // Salesperson report keeps DNQ units (the salesperson gets the unit even on a
+  // house deal), so it reads the RAW delivered set, not the retail-touch `counted`.
+  const reps = useMemo(() => (fni ? salespersonReport(f.delivered, defs).filter((r) => r.retail > 0).slice(0, 6) : []), [fni, f.delivered, defs]);
 
   // THE LOGG pay picture — the full finance-manager check (grid commission +
   // draw + spiffs) for THIS month's counted deals, computed by the same audited
@@ -150,7 +153,10 @@ export function Performance() {
   // literal "vsc", which read a false 0% (July 23).
   const vscPct = useMemo(() => vscPenetrationPct(f.counted, defs), [f.counted, defs]);
 
-  const funnelMax = Math.max(1, ...FUNNEL_STAGES.map((s) => f.counted.concat(f.pipeline).filter((d) => d.status === s).length));
+  // Funnel counts retail cars — product-only deals lift gross, not the delivered
+  // vehicle bar, so the funnel's "Delivered" matches the headline unit count.
+  const funnelDeals = f.counted.filter((d) => !isProductOnly(d)).concat(f.pipeline);
+  const funnelMax = Math.max(1, ...FUNNEL_STAGES.map((s) => funnelDeals.filter((d) => d.status === s).length));
   // Pay-plan status (PVR/PPU/bonus checks) must read the SAME retail basis the
   // grid pays on — else it shows PVR $1,580 (all cars) next to a base rate on
   // $1,733 (retail). fniPayDeals drops no-qualify for an F&I grid.
@@ -192,7 +198,7 @@ export function Performance() {
         <Kpi delay={60} icon={<Trophy size={13} />} tone="text-good" label="Earned commission" value={f.current.grossPay} money on={on}
           hint={plan.draw ? (f.current.drawOwed > 0 ? `earned against your ${plan.drawCarriedIn ? "draw + carried balance" : "draw"} · ${money(f.current.drawOwed)} left to clear` : "advances cleared — this builds your real check") : undefined}
           onExplain={() => askIla("Explain my earned commission number — which closed deals are in it, what each one paid, and how it offsets my draw.")} />
-        <Kpi delay={120} icon={<Target size={13} />} tone="text-fg/50" label={cap(unit.plural)} value={f.counted.length} suffix={plan.goalUnits ? ` / ${plan.goalUnits}` : ""} hint={plan.goalUnits ? "closed / goal" : "closed"} on={on} onExplain={() => askIla(`Which ${unit.plural} count as closed this month? List them and flag anything that looks miscounted.`)} />
+        <Kpi delay={120} icon={<Target size={13} />} tone="text-fg/50" label={cap(unit.plural)} value={f.totals.units} suffix={plan.goalUnits ? ` / ${plan.goalUnits}` : ""} hint={plan.goalUnits ? "closed / goal" : "closed"} on={on} onExplain={() => askIla(`Which ${unit.plural} count as closed this month? List them and flag anything that looks miscounted.`)} />
         <Kpi delay={180} icon={<Layers size={13} />} tone="text-accent2" label="Live pipeline" value={live.gross} money hint={`${live.count} ${live.count === 1 ? unit.singular : unit.plural} working`} on={on} onExplain={() => askIla("Explain my live-pipeline gross — which working deals are in it and on what money channel.")} />
       </div>
 
@@ -223,7 +229,7 @@ export function Performance() {
           </div>
           <div className="mt-2 flex justify-between text-xs text-fg/50">
             <span>
-              <b className="tabnum text-fg">{f.counted.length}</b> of {plan.goalUnits} {unit.plural}
+              <b className="tabnum text-fg">{f.totals.units}</b> of {plan.goalUnits} {unit.plural}
             </span>
             <span className={goalPct >= 100 ? "font-bold text-good" : "tabnum"}>
               {goalPct >= 100 ? "Goal hit 🎉" : `${Math.round(goalPct)}%`}
@@ -244,7 +250,7 @@ export function Performance() {
         <WidgetTitle icon={<BarChart3 size={13} />}>Pipeline funnel</WidgetTitle>
         <div className="mt-3 space-y-2">
           {FUNNEL_STAGES.map((s) => {
-            const stage = f.counted.concat(f.pipeline).filter((d) => d.status === s);
+            const stage = funnelDeals.filter((d) => d.status === s);
             const gross = stage.reduce((t, d) => t + dealMoney(d), 0);
             return (
               <div key={s} className="flex items-center gap-2">
@@ -288,7 +294,7 @@ export function Performance() {
       )}
 
       {/* Product penetration (F&I) */}
-      {fni && f.counted.length > 0 && (
+      {fni && f.totals.units > 0 && (
         <div className="glass rise p-4" style={{ animationDelay: "300ms" }}>
           <WidgetTitle icon={<Layers size={13} />}>Product penetration{spiffs > 0 ? ` · ${money(spiffs)} spiffs earned` : ""}</WidgetTitle>
           <div className="mt-3 space-y-2">

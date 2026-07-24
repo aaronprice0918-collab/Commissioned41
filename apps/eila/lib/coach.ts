@@ -49,8 +49,8 @@ export function coach(plan: PayPlan, deals: Deal[], industry: Industry = "automo
   }
 
   // 6) momentum
-  if (f.counted.length > 0 && !out.some((i) => i.kind === "money")) {
-    out.push({ kind: "win", text: `${f.counted.length} ${f.counted.length === 1 ? unit.singular : unit.plural} closed, ${money(f.current.grossPay)} earned. Likely month-end: ${money(f.likely.grossPay)}.` });
+  if (f.totals.units > 0 && !out.some((i) => i.kind === "money")) {
+    out.push({ kind: "win", text: `${f.totals.units} ${f.totals.units === 1 ? unit.singular : unit.plural} closed, ${money(f.current.grossPay)} earned. Likely month-end: ${money(f.likely.grossPay)}.` });
   }
 
   return out.slice(0, 5);

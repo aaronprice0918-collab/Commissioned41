@@ -6,7 +6,7 @@ import { Printer, ArrowLeft } from "lucide-react";
 import Link from "next/link";
 import { useMission } from "@/lib/store";
 import { Paywall, useEntitled } from "@/components/Paywall";
-import { calculatePay, localMonthKey, money, perfFromDeals } from "@/lib/engine";
+import { calculatePay, dealTotals, fniPayDeals, localMonthKey, money, perfFromDeals } from "@/lib/engine";
 import { INDUSTRY_LABEL, INDUSTRY_UNIT, STATUS_LABEL } from "@/lib/types";
 import { INDUSTRY_DEAL, statusLabel } from "@/lib/industry";
 import { basisGrossLabel, dealMoneyOf, dealUnits, moneyBasis, penetration, productDefs, round1, salespersonReport, spiffTotal, usesProductMenu } from "@/lib/fni";
@@ -57,18 +57,24 @@ function Report() {
     // an evening boundary deal belongs to (July 8 audit, HIGH).
     const monthDeals = data.deals.filter((d) => localMonthKey(d.date) === monthKey && d.status !== "dead");
     const delivered = monthDeals.filter((d) => d.status === "delivered");
-    const pay = calculatePay(plan, perfFromDeals(delivered));
-    const spiffs = fni ? spiffTotal(delivered, defs) : 0;
+    // RETAIL TOUCHES — the SAME basis the live app's forecast() uses, so the
+    // payroll report and the app can never disagree on units/PVR/pay. For an F&I
+    // back grid this drops no-qualify (DNQ) deals; dealTotals also drops
+    // product-only. The rep report and deal log below keep the full `delivered`
+    // set (a salesperson still gets the unit on a house/DNQ deal).
+    const retail = fniPayDeals(plan, delivered);
+    const pay = calculatePay(plan, perfFromDeals(retail));
+    const spiffs = fni ? spiffTotal(retail, defs) : 0;
 
-    const units = delivered.length;
-    const primary = delivered.reduce((s, d) => s + d.amount, 0);
-    const secondaryT = delivered.reduce((s, d) => s + d.secondary, 0);
+    const units = dealTotals(retail).units;
+    const primary = retail.reduce((s, d) => s + d.amount, 0);
+    const secondaryT = retail.reduce((s, d) => s + d.secondary, 0);
     // Headline money follows the channel the USER'S plan pays on — back
     // gross for an F&I grid, front for a front-paid rep, else the whole deal.
     const basis = moneyBasis(profile);
-    const gross = delivered.reduce((s, d) => s + dealMoneyOf(basis)(d), 0);
-    const productUnits = fni ? delivered.reduce((s, d) => s + dealUnits(d, defs), 0)
-      : delivered.reduce((s, d) => s + (d.addons || 0), 0);
+    const gross = retail.reduce((s, d) => s + dealMoneyOf(basis)(d), 0);
+    const productUnits = fni ? retail.reduce((s, d) => s + dealUnits(d, defs), 0)
+      : retail.reduce((s, d) => s + (d.addons || 0), 0);
 
     return {
       profile, plan, defs, fni, spec, unit, basis,
@@ -76,7 +82,7 @@ function Report() {
       units, gross, primary, secondary: secondaryT, productUnits,
       perUnit: units ? gross / units : 0,
       ppu: units ? productUnits / units : 0,
-      pen: fni ? penetration(delivered, defs) : [],
+      pen: fni ? penetration(retail, defs) : [],
       reps: fni ? salespersonReport(delivered, defs).filter((r) => r.retail > 0) : [],
       monthName: new Date(`${monthKey}-15T12:00:00`).toLocaleDateString(undefined, { month: "long", year: "numeric" }),
     };
@@ -116,7 +122,7 @@ function Report() {
 
         {/* headline strip */}
         <section className="mt-6 grid grid-cols-2 gap-3 sm:grid-cols-4">
-          <Head label={m.basis === "back" ? "Deal touches" : cap(m.unit.plural)} value={String(m.units)} />
+          <Head label={cap(m.unit.plural)} value={String(m.units)} />
           <Head label={basisGrossLabel(m.basis, m.profile.industry)} value={money(m.gross)} />
           <Head label={m.fni ? "PVR" : `Per ${m.unit.singular}`} value={money(m.perUnit)} />
           <Head label={m.fni ? "PPU" : "Add-ons / deal"} value={m.ppu.toFixed(2)} />

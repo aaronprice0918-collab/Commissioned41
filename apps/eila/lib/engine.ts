@@ -123,9 +123,10 @@ function combinePct(a: PerfInput, b: PerfInput, key: "vscPenetration"): number |
 
 // ---- forecast ----
 export interface Forecast {
-  counted: Deal[];
+  counted: Deal[]; // RETAIL TOUCHES: delivered, no-qualify (DNQ) excluded — the finance scorecard
+  delivered: Deal[]; // ALL delivered incl DNQ — only for salespersonReport (salesperson keeps the unit)
   pipeline: Deal[];
-  totals: DealTotals; // of delivered
+  totals: DealTotals; // of counted (retail touches)
   current: PayResult; // delivered only (banked)
   likely: PayResult; // delivered + stage-weighted pipeline
   best: PayResult; // delivered + all pipeline
@@ -225,7 +226,14 @@ export function fniPayDeals(plan: PayPlan, deals: Deal[]): Deal[] {
 
 export function forecast(plan: PayPlan, deals: Deal[], now = new Date(), daysOff: number[] = []): Forecast {
   const month = deals.filter((d) => isThisMonth(d.date, now) && d.status !== "dead");
-  const counted = month.filter((d) => d.status === "delivered");
+  const delivered = month.filter((d) => d.status === "delivered");
+  // RETAIL TOUCHES — the LOGG rule, applied ONCE here so every surface that reads
+  // f.counted agrees: no-qualify (DNQ) deals keep the salesperson's unit (that's
+  // `delivered`, fed to salespersonReport) but are out of the finance manager's
+  // count and every per-unit denominator. Per-car metric functions
+  // (vscPenetrationPct, penetration, dealTotals) also re-filter internally, so
+  // this stays consistent — and it's a no-op for reps who never set noQualify.
+  const counted = delivered.filter((d) => !d.noQualify);
   const pipeline = month.filter((d) => d.status !== "delivered");
 
   const payCounted = fniPayDeals(plan, counted);
@@ -249,8 +257,12 @@ export function forecast(plan: PayPlan, deals: Deal[], now = new Date(), daysOff
   const todayFraction = daysOff.includes(now.getDay()) ? 0 : (now.getHours() * 60 + now.getMinutes()) / (24 * 60);
   const workedSoFar = Math.max(1, workingDays(now, dayOfMonth - 1, daysOff) + todayFraction);
   const workTotal = Math.max(workedSoFar, workingDays(now, daysInMonth, daysOff));
-  const paceUnits = Math.round((counted.length / workedSoFar) * workTotal);
-  const factor = counted.length > 0 ? paceUnits / counted.length : 0;
+  // Pace on RETAIL TOUCHES (countedPerf.units already excludes product-only), so
+  // paceUnits and the scaling factor stay consistent with the unit count shown
+  // everywhere else — a product-only deal lifts gross, never the projected count.
+  const countedUnits = countedPerf.units;
+  const paceUnits = Math.round((countedUnits / workedSoFar) * workTotal);
+  const factor = countedUnits > 0 ? paceUnits / countedUnits : 0;
   const pacePerf = factor > 0 ? scaledPerf(payCounted, factor) : countedPerf;
   const pace = calculatePay(plan, pacePerf);
   const pacePay = pace.grossPay;
@@ -258,7 +270,7 @@ export function forecast(plan: PayPlan, deals: Deal[], now = new Date(), daysOff
   const elapsed = dayOfMonth / daysInMonth;
   const confidence = Math.max(0.1, Math.min(0.97, 0.35 + elapsed * 0.45 + Math.min(pipeline.length / 5, 1) * 0.2));
 
-  return { counted, pipeline, totals: dealTotals(counted), current, likely, best, pace, paceUnits, pacePay, confidence };
+  return { counted, delivered, pipeline, totals: dealTotals(counted), current, likely, best, pace, paceUnits, pacePay, confidence };
 }
 
 function sum<T>(arr: T[], f: (x: T) => number) { return arr.reduce((a, x) => a + (f(x) || 0), 0); }

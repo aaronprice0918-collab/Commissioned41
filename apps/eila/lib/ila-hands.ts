@@ -660,7 +660,7 @@ export async function executeIlaTool(call: IlaToolCall, ctx: HandsCtx): Promise<
         const now = new Date();
         const f = forecast(ctx.profile.plan, ctx.deals, now, ctx.profile.daysOff ?? []);
         const income = incomeExpectation(f.likely.grossPay, cfg.paydays ?? cfg.payday, now, ctx.profile.plan.taxRate, cfg.checkNets);
-        const avgPerDeal = f.counted.length > 0 ? f.current.grossPay / f.counted.length : 0;
+        const avgPerDeal = f.totals.units > 0 ? f.current.grossPay / f.totals.units : 0;
         const v = evaluatePurchase(cfg, income, now, amount, avgPerDeal);
         if (!v) return { content: "Couldn't compute a verdict.", isError: true };
         const label = String(call.input.label ?? "this purchase");

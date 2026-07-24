@@ -97,7 +97,7 @@ export function buildIlaSystemParts(profile: Profile, plan: PayPlan, deals: Deal
     `Rep: ${profile.name ?? "the user"} — role: ${ROLE_LABEL[profile.role]}, industry: ${INDUSTRY_LABEL[industry]}.`,
     `Today: day ${dayOfMonth} of ${daysInMonth} — ${daysRemaining} calendar days left${daysOff.length ? ` (${workingDays(now, daysInMonth, daysOff) - workingDays(now, dayOfMonth, daysOff)} of them selling days, given their days off)` : ""}.`,
     `Monthly goal: ${plan.goalUnits ?? 0} ${unit.plural}.`,
-    `Delivered this month: ${f.counted.length} ${unit.plural}.`,
+    `Delivered this month: ${f.totals.units} ${unit.plural} (retail touches — no-qualify and product-only deals excluded from the count).`,
     `Pace: on track for ${f.paceUnits} ${unit.plural} at current rate (${f.paceUnits >= (plan.goalUnits ?? 0) ? "AHEAD of" : "BEHIND"} the ${plan.goalUnits ?? 0}-${unit.singular} goal).`,
     `Earned commission so far (gross): ${money(f.current.grossPay)}. From deals already in hand — likely month-end: ${money(f.likely.grossPay)}; ceiling if every working deal lands: ${money(f.best.grossPay)}. Pace forecast (gross, assumes they KEEP selling at this rate — can exceed the in-hand ceiling): ${money(f.pacePay)}.${plan.draw ? ` Their draw is ${money(plan.draw.amount)} ${plan.draw.period} — when they ask what actually hits the bank, subtract advances: pace beyond draw ≈ ${money(f.pace.aboveDraw)}. NEVER present gross pace and beyond-draw pace as the same number.` : ""}`,
     grossBreakdownLine(f.counted, unit),

@@ -167,6 +167,34 @@ describe("forecast() — delivered vs pipeline split", () => {
   });
 });
 
+describe("Aaron's July shape — 36 retail touches, both grid bonuses fire (regression: the '41 units' bug)", () => {
+  it("41 delivered = 36 retail + 3 DNQ + 2 product-only → units 36, PVR $1,900+ AND VSC 50%+ both fire", () => {
+    const plan = kennesawFinancePlan();
+    const deals: Deal[] = [];
+    // 36 retail cars at $2,000 back; 30 of them carry VSC (30/36 = 83% ≥ 50%).
+    for (let i = 0; i < 36; i++) {
+      deals.push(deal({ status: "delivered", amount: 20000, secondary: 2000, addons: 2, reserve: 500, products: i < 30 ? ["vsc"] : [] }));
+    }
+    // 3 no-qualify (house/DNQ) — salesperson keeps the unit, finance count excludes them.
+    for (let i = 0; i < 3; i++) deals.push(deal({ status: "delivered", amount: 15000, secondary: 0, addons: 0, noQualify: true }));
+    // 2 product-only — gross lifts PVR, never a delivered unit.
+    for (let i = 0; i < 2; i++) deals.push(deal({ status: "delivered", amount: 0, secondary: 1000, addons: 1, productOnly: true }));
+
+    const f = forecast(plan, deals, NOW);
+
+    expect(f.delivered.length).toBe(41);   // every delivered deal (what Aaron "touched")
+    expect(f.counted.length).toBe(38);     // retail touches + product-only (DNQ removed)
+    expect(f.totals.units).toBe(36);       // THE number: retail cars only — no 41, no 39, no 38
+
+    // PVR = back gross (incl product-only) / 36 retail = (72000 + 2000)/36 ≈ $2,055 ≥ $1,900.
+    expect(f.current.rateBreakdown!.pvr).toBeGreaterThanOrEqual(1900);
+    // Both +0.5% kickers fire → they bake into the grid rate as bonusRate 1.0
+    // (0.5 PVR + 0.5 VSC). This is the exact thing that wasn't showing on Aaron's
+    // phone when the displays divided gross by 41/39 instead of 36.
+    expect(f.current.rateBreakdown!.bonusRate).toBe(1);
+  });
+});
+
 describe("forecast() — banked / likely / best", () => {
   it("current is banked (delivered only); best includes all pipeline; likely sits between", () => {
     const deals = [

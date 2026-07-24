@@ -14,6 +14,7 @@ import { LockScreen } from "./LockScreen";
 import { IlaChat } from "./IlaChat";
 import { biometricEnabled, isUnlockedThisSession } from "@/lib/biometric";
 import { Wordmark } from "./Brand";
+import { UpdatePrompt } from "./UpdatePrompt";
 import { Paywall, useEntitled } from "./Paywall";
 import { forecast, money } from "@/lib/engine";
 import { todaysMission } from "@/lib/coach";
@@ -120,6 +121,7 @@ export function AppShell({ active, children, wide }: { active: AppSection; child
 
   return (
     <IlaLaunch.Provider value={openIla}>
+    <UpdatePrompt />
     <div className="min-h-[100dvh] w-full lg:mx-auto lg:grid lg:max-w-7xl lg:grid-cols-[240px_minmax(0,1fr)] lg:gap-6 lg:px-6 lg:py-6">
       <DesktopRail active={active} dayCount={dayCount} onAdd={() => setAddOpen(true)} onAsk={() => openIla()} />
       <div className={`mx-auto w-full max-w-app px-4 pb-36 pt-[max(env(safe-area-inset-top),20px)] lg:mx-0 lg:max-w-none lg:px-0 lg:pb-0 lg:pt-0 ${wide ? "lg:max-w-none" : ""}`}>

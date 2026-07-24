@@ -10,6 +10,7 @@ import { Industry, INDUSTRY_LABEL, INDUSTRY_UNIT, ProductDef, ROLE_LABEL, Role }
 import { productDefs, usesProductMenu } from "@/lib/fni";
 import { PayPlan } from "@/lib/payplan/types";
 import { changedFields } from "@/lib/mergeEdits";
+import { BUILD_ID } from "@/lib/version";
 import { Sheet, Labeled, NumInput } from "./ui";
 import { PayPlanUploader, ParseResult } from "./PayPlanUploader";
 import { PlanEditor } from "./PlanEditor";
@@ -381,6 +382,9 @@ function AccountBlock({ account, signIn, signUp, signOut }: {
         <div className="min-w-0">
           <div className="text-[11px] font-semibold uppercase tracking-wider text-fg/65">Signed in</div>
           <div className="truncate text-sm text-fg/80">{account.email}</div>
+          {/* Read this to support to confirm exactly which version your phone is
+              running — ends any "is it the old cached app?" guessing. */}
+          <div className="mt-1 text-[10px] font-mono text-fg/40">Version {BUILD_ID === "dev" ? "dev" : BUILD_ID.slice(0, 7)}</div>
         </div>
         <button onClick={() => signOut()} className="flex items-center gap-1.5 rounded-xl bg-fg/6 px-3 py-2 text-sm text-fg/60 active:scale-95"><LogOut size={15} /> Sign out</button>
       </div>

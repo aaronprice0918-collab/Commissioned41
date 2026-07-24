@@ -31,9 +31,17 @@ const csp = [
   `form-action 'self'`,
 ].join("; ");
 
+// Build id for the in-app "new version ready" prompt: the deployed commit SHA
+// (Vercel provides it at build). It's inlined into BOTH the client bundle and
+// the /api/version route, so a phone running an OLD deploy sees its baked id
+// differ from the live deploy's id and can prompt the user to refresh instead
+// of silently showing stale, cached numbers. "dev" locally = never prompts.
+const buildId = process.env.VERCEL_GIT_COMMIT_SHA || "dev";
+
 /** @type {import('next').NextConfig} */
 const nextConfig = {
   reactStrictMode: true,
+  env: { NEXT_PUBLIC_BUILD_ID: buildId },
   async headers() {
     return [
       {

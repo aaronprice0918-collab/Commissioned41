@@ -215,8 +215,11 @@ describe("forecast() — F&I grid pays on retail cars, not DNQ (July 23)", () =>
     const f = forecast(kennesawFinancePlan(), deals, NOW);
     // Grid PVR must read the retail average ($1,733), NOT 3×1733/4 = $1,300.
     expect(f.current.rateBreakdown?.pvr).toBe(1733);
-    // The car COUNT still includes the DNQ delivery (4 cars sold).
-    expect(f.counted.length).toBe(4);
+    // Retail touches (the finance manager's count) EXCLUDE the DNQ deal — 3, not 4.
+    expect(f.counted.length).toBe(3);
+    expect(f.totals.units).toBe(3);
+    // The raw delivered set still has all 4 cars (the salesperson keeps the unit).
+    expect(f.delivered.length).toBe(4);
   });
 });
 
