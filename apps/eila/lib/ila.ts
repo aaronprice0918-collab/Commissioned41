@@ -4,7 +4,7 @@ import { INDUSTRY_LABEL, INDUSTRY_UNIT, ROLE_LABEL } from "./types";
 import type { PayPlan } from "./payplan/types";
 import { dealTotals, followUpQueue, forecast, monthBounds, money, workingDays } from "./engine";
 import { fniPayPicture } from "./fniPay";
-import { productDefs, resolveVscId } from "./fni";
+import { moneyBasis, productDefs, resolveVscId, type MoneyBasis } from "./fni";
 import { coach, todaysMission } from "./coach";
 import { ilaCore } from "@commissioned41/ila-core/core";
 import { BrainLesson, renderBrain } from "@commissioned41/ila-core/brain";
@@ -22,14 +22,32 @@ export function ilaConfigured(): boolean {
 // "what's my front gross", "what's my PVR" from the same figures the Stats
 // screen shows, instead of only knowing pay. Without this line she has the split
 // logged but nothing to read it from, so she can't break the numbers down.
-export function grossBreakdownLine(counted: Deal[], unit: { singular: string; plural: string }): string {
+export function grossBreakdownLine(
+  counted: Deal[],
+  unit: { singular: string; plural: string },
+  // The money channel the USER'S plan pays on. "PVR" is NOT one number: on a
+  // back-end F&I grid it means F&I gross per car, and calling the blended
+  // front+back average "PVR" overstates it by the entire front gross. That's the
+  // exact confusion of July 23 ("I'm above $1,600 per car" — his TOTAL was, his
+  // F&I PVR wasn't), and it was still living in EILA's snapshot one line above
+  // the correct back-only PVR — two contradictory "PVR"s in the same prompt.
+  basis: MoneyBasis = "total",
+): string {
   const t = dealTotals(counted);
   if (!t.units) return "Deal gross breakdown: no delivered deals logged yet this month.";
   const frontPerUnit = t.primary / t.units;
   const fiNote = t.secondary === 0
     ? " NOTE: F&I/back gross is $0 — no back-end was logged on these deals; to track F&I gross, log the back gross on each deal (log_deal/update_deal `secondary`)."
     : "";
-  return `Deal GROSS breakdown (delivered this month, ${t.units} ${unit.plural}) — this is DEAL gross, NOT the rep's commission above: total gross ${money(t.gross)} = front gross ${money(t.primary)} + F&I/back gross ${money(t.secondary)}. PVR ${money(t.perUnit)} (front ${money(frontPerUnit)} / F&I ${money(t.avgSecondary)} per ${unit.singular}). F&I products ${t.addons} (${t.addonsPerUnit.toFixed(2)} per ${unit.singular}).${fiNote}`;
+  // Name THEIR PVR by the basis their plan pays on, and say plainly which number
+  // is not theirs — so she can never quote a front-contaminated "PVR".
+  const pvrLine =
+    basis === "back"
+      ? `THEIR PVR (the only one that matters for their pay — this plan pays on F&I/back gross) is F&I PVR ${money(t.avgSecondary)} per ${unit.singular}. Front gross averages ${money(frontPerUnit)} per ${unit.singular} — that is the STORE'S money, it is NOT in their PVR, their grid rate, or their pay. Blended front+F&I would be ${money(t.perUnit)} per ${unit.singular} — NEVER call that their PVR.`
+      : basis === "front"
+        ? `THEIR PVR (this plan pays on front gross) is front PVR ${money(frontPerUnit)} per ${unit.singular}. F&I/back averages ${money(t.avgSecondary)} per ${unit.singular} and is NOT in their PVR or pay. Blended would be ${money(t.perUnit)} — never call that their PVR.`
+        : `PVR ${money(t.perUnit)} per ${unit.singular} (front ${money(frontPerUnit)} / F&I ${money(t.avgSecondary)}) — this plan pays on total gross, so the blended number IS their PVR.`;
+  return `Deal GROSS breakdown (delivered this month, ${t.units} ${unit.plural}) — this is DEAL gross, NOT the rep's commission above: total gross ${money(t.gross)} = front gross ${money(t.primary)} + F&I/back gross ${money(t.secondary)}. ${pvrLine} F&I products ${t.addons} (${t.addonsPerUnit.toFixed(2)} per ${unit.singular}).${fiNote}`;
 }
 
 // THE LOGG line for finance managers: the full pay picture EILA must be able to
@@ -104,7 +122,7 @@ export function buildIlaSystemParts(profile: Profile, plan: PayPlan, deals: Deal
     `Delivered this month: ${f.totals.units} ${unit.plural} (retail touches — no-qualify and product-only deals excluded from the count).`,
     `Pace: on track for ${f.paceUnits} ${unit.plural} at current rate (${f.paceUnits >= (plan.goalUnits ?? 0) ? "AHEAD of" : "BEHIND"} the ${plan.goalUnits ?? 0}-${unit.singular} goal).`,
     `Earned commission so far (gross): ${money(f.current.grossPay)}. From deals already in hand — likely month-end: ${money(f.likely.grossPay)}; ceiling if every working deal lands: ${money(f.best.grossPay)}. Pace forecast (gross, assumes they KEEP selling at this rate — can exceed the in-hand ceiling): ${money(f.pacePay)}.${plan.draw ? ` Their draw is ${money(plan.draw.amount)} ${plan.draw.period} — when they ask what actually hits the bank, subtract advances: pace beyond draw ≈ ${money(f.pace.aboveDraw)}. NEVER present gross pace and beyond-draw pace as the same number.` : ""}`,
-    grossBreakdownLine(f.counted, unit),
+    grossBreakdownLine(f.counted, unit, moneyBasis(profile)),
     financePayLine(profile, f.counted),
     `Live deals (${f.pipeline.length}): ${pipelineSummary || "empty — nothing live right now"}`,
     `Customer touches due today, overdue, or going quiet: ${dueToday.length} — ${dueToday.map((d) => d.customer || "a customer").join(", ") || "none"}.`,
