@@ -60,3 +60,5 @@ const nextConfig = {
 };
 
 export default nextConfig;
+
+// deploy marker: re-trigger Vercel build for the 41→36 fix (commit 2134b99 did not publish)
